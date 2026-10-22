@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Project Apex — Precision 3D desktop motorsport racing simulation featuring multi-circuit competition, per-vehicle physics tuning, AI fleet racing, and comprehensive career progression." />
+    <meta property="og:title" content="Project Apex — Desktop Motorsport Racing Simulation" />
+    <meta property="og:description" content="Precision 3D desktop motorsport racing simulation with per-vehicle physics tuning, AI fleet racing, and career progression." />
+    <meta property="og:type" content="website" />
+    <title>Project Apex — Desktop Motorsport Racing Simulation</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0e14'/%3E%3Cpolygon points='16,5 27,25 21,25 16,14 11,25 5,25' fill='%23e10600'/%3E%3Cpolygon points='16,11 20,20 12,20' fill='%23ffffff' opacity='0.9'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="renderCanvas" touch-action="none"></canvas>
+
+    <div id="ui-overlay">
+      <!-- Loading Screen -->
+      <div id="loading-container" class="loading-screen">
+        <div class="loader-content">
+          <h1 class="game-title">PROJECT APEX <span class="accent-slash">//</span></h1>
+          <p class="subtitle">PRECISION DESKTOP MOTORSPORT</p>
+          <div class="progress-bar-bg">
+            <div id="progress-bar-fill" class="progress-bar-fill"></div>
+          </div>
+          <p id="loading-status" class="loading-status">INITIALIZING ENGINE...</p>
+        </div>
+      </div>
+
+      <!-- Top-left telemetry & status overlay -->
+      <div id="debug-overlay" class="debug-overlay">
+        <div class="debug-badge">PROJECT APEX // TELEMETRY</div>
+        <div id="fps-counter" class="debug-text">FPS: --</div>
+        <div id="car-info" class="debug-text">Vehicle: --</div>
+        <div id="camera-mode" class="debug-text">Camera: CHASE VIEW</div>
+        <div id="controls-hint" class="debug-hint">
+          <strong>W/↑:</strong> Drive • <strong>S/↓:</strong> Brake/Rev • <strong>A/D:</strong> Steer<br />
+          <strong>SPACE:</strong> Handbrake • <strong>R:</strong> Reset • <strong>C:</strong> Camera • <strong>F3:</strong> Physics • <strong>ESC:</strong> Pause
+        </div>
+      </div>
+
+      <!-- Top-center Race Timer & Countdown -->
+      <div class="top-center-hud">
+        <div id="timer-cluster" class="timer-cluster">
+          <span id="timer-label" class="timer-label">LAP TIME</span>
+          <span id="race-timer" class="race-timer">00:00.00</span>
+        </div>
+        <div id="countdown-banner" class="countdown-banner hidden">READY</div>
+      </div>
+
+      <!-- Bottom-right Sports Racing HUD -->
+      <div id="racing-hud" class="racing-hud">
+        <!-- Dedicated Drift Challenge Scoring Display -->
+        <div id="drift-score-cluster" class="drift-score-cluster hidden">
+          <div class="drift-score-header">
+            <span class="drift-score-label">DRIFT SCORE</span>
+            <span id="drift-total-score" class="drift-score-number">0 PTS</span>
+          </div>
+          <div id="drift-active-row" class="drift-active-row hidden">
+            <span id="drift-active-points" class="drift-active-points">+0 PTS</span>
+            <span id="drift-multiplier" class="drift-multiplier-badge">x1.0</span>
+          </div>
+          <div id="drift-feedback-banner" class="drift-feedback-banner hidden">DRIFTING!</div>
+        </div>
+
+        <div id="position-indicator-row" class="position-indicator-row hidden">
+          <span class="pos-label">POS</span>
+          <span id="position-rank" class="pos-rank">1ST</span>
+          <span class="pos-total">/ 4</span>
+        </div>
+        <div id="checkpoint-indicator" class="checkpoint-hud">LAP 1 • GATE 1/6</div>
+        <div class="hud-main">
+          <div class="speed-cluster">
+            <span id="speed-value" class="speed-number">0</span>
+            <span class="speed-unit">KM/H</span>
+          </div>
+          <div class="gear-badge" id="gear-indicator">N</div>
+        </div>
+
+        <div class="telemetry-bar">
+          <div id="drift-badge" class="status-badge hidden">DRIFT</div>
+          <div id="handbrake-badge" class="status-badge handbrake-badge hidden">HANDBRAKE</div>
+          <div class="slip-readout" id="slip-readout">SLIP: 0.0°</div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
