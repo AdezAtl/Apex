@@ -90,13 +90,15 @@ export class NetworkClient {
 
     return new Promise((resolve, reject) => {
       try {
+        let hasErrorOccurred = false;
         const socket = new WebSocket(cleanAddr);
         this.ws = socket;
 
         const timeout = setTimeout(() => {
           if (this.state === 'connecting') {
+            hasErrorOccurred = true;
             socket.close();
-            const err = `Connection to ${cleanAddr} timed out. Make sure host is running and reachable.`;
+            const err = `Connection to ${cleanAddr} timed out. Ensure the host LAN server is running (port 5050).`;
             this.setState('error', err);
             reject(new Error(err));
           }
@@ -104,6 +106,7 @@ export class NetworkClient {
 
         socket.onopen = () => {
           clearTimeout(timeout);
+          hasErrorOccurred = false;
           this.setState('connected');
           this.startPingLoop();
           resolve();
@@ -116,13 +119,16 @@ export class NetworkClient {
         socket.onclose = () => {
           clearTimeout(timeout);
           this.stopPingLoop();
-          this.setState('disconnected');
+          if (!hasErrorOccurred) {
+            this.setState('disconnected');
+          }
         };
 
         socket.onerror = () => {
           clearTimeout(timeout);
           this.stopPingLoop();
-          const err = `Failed to connect to LAN server at ${cleanAddr}`;
+          hasErrorOccurred = true;
+          const err = `Cannot reach LAN Server at ${cleanAddr}. Start the server in your terminal with 'npm run server' or 'node scripts/lan_server.cjs'.`;
           this.setState('error', err);
           reject(new Error(err));
         };

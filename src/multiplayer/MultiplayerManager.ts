@@ -117,7 +117,7 @@ export class MultiplayerManager {
       if (state === 'error') {
         this.lobbyUI.setStatus(error || 'Network error encountered', 'error');
       } else if (state === 'disconnected' && this.isActive) {
-        this.lobbyUI.setStatus('Disconnected from server', 'error');
+        this.lobbyUI.setStatus('Disconnected from server. Ensure LAN server is running on port 5050.', 'error');
       }
     });
 

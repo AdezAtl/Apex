@@ -47,6 +47,15 @@ function resetRoom() {
 
 const wss = new WebSocketServer({ port: PORT });
 
+wss.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`[LAN Server] Port ${PORT} is already in use by an active instance. Using running server.`);
+    process.exit(0);
+  } else {
+    console.error('[LAN Server] Server error:', err);
+  }
+});
+
 function send(ws, msg) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));

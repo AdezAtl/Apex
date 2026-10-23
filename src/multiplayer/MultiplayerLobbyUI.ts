@@ -240,7 +240,7 @@ export class MultiplayerLobbyUI {
             <div class="mp-field-group">
               <label class="mp-field-label">SERVER PORT / BINDING</label>
               <input id="input-host-addr" class="mp-input" type="text" value="localhost:5050" placeholder="localhost:5050" />
-              <span class="mp-hint">Local port for hosting. Windows Firewall may prompt to allow LAN connections.</span>
+              <span class="mp-hint">Local host binding. Requires LAN server running on port 5050 (run 'npm run server' or 'node scripts/lan_server.cjs' in terminal).</span>
             </div>
           `
               : `
