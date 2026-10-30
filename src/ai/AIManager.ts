@@ -48,7 +48,7 @@ export class AIManager {
       driverPace: 1.00,
       personalityType: 'aggressor',
       launchDelaySeconds: 0.06,
-      vehicleId: 'apex_sport_coupe',
+      vehicleId: 'bmw_m3',
     },
     {
       id: 'ai_2',
@@ -60,7 +60,7 @@ export class AIManager {
       driverPace: 0.98,
       personalityType: 'technician',
       launchDelaySeconds: 0.14,
-      vehicleId: 'azura_coupe',
+      vehicleId: 'toyota_supra',
     },
     {
       id: 'ai_3',
@@ -72,7 +72,7 @@ export class AIManager {
       driverPace: 0.95,
       personalityType: 'challenger',
       launchDelaySeconds: 0.22,
-      vehicleId: 'stratos_sedan',
+      vehicleId: 'chevy_camaro',
     },
   ];
 

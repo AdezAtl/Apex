@@ -29,7 +29,7 @@ export class SettingsManager {
       effectsVolume: 0.8,
       isMuted: false,
       vehiclePaintId: 'pearl_white',
-      selectedVehicleId: 'apex01_flagship',
+      selectedVehicleId: 'mercedes_slc',
       preferredCameraMode: 'chase',
     };
 
@@ -87,7 +87,7 @@ export class SettingsManager {
   }
 
   public getSelectedVehicleId(): string {
-    return this.settings.selectedVehicleId || 'apex01_flagship';
+    return this.settings.selectedVehicleId || 'mercedes_slc';
   }
 
   public setSelectedVehicleId(vehicleId: string): void {

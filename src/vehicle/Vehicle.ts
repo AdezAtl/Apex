@@ -25,6 +25,8 @@ export interface VehicleMetadata {
 export interface WheelNodes {
   frontLeft: TransformNode | AbstractMesh | null;
   frontRight: TransformNode | AbstractMesh | null;
+  midLeft?: TransformNode | AbstractMesh | null;
+  midRight?: TransformNode | AbstractMesh | null;
   rearLeft: TransformNode | AbstractMesh | null;
   rearRight: TransformNode | AbstractMesh | null;
 }
@@ -43,12 +45,15 @@ export class Vehicle {
   public wheels: WheelNodes = {
     frontLeft: null,
     frontRight: null,
+    midLeft: null,
+    midRight: null,
     rearLeft: null,
     rearRight: null,
   };
   public metadata: VehicleMetadata | null = null;
   public currentPitch: number = 0;
   public currentRoll: number = 0;
+  public yawOffset: number = 0;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -64,6 +69,7 @@ export class Vehicle {
     paintId?: string,
     yawOffset: number = 0
   ): Promise<VehicleMetadata> {
+    this.yawOffset = yawOffset;
     this.dispose();
     this.rootNode = new TransformNode('VehicleRoot', this.scene);
     this.modelContainer = new TransformNode('VehicleModelContainer', this.scene);
@@ -86,20 +92,34 @@ export class Vehicle {
     // Collect all loaded nodes (meshes and transform nodes)
     const allNodes: Node[] = [...result.meshes, ...result.transformNodes];
 
-    // Find and map the 4 discrete wheel nodes
+    // Reset Blender grid offsets on top-level car root containers
+    for (const node of allNodes) {
+      if (node.name.startsWith('Car_') && (node instanceof TransformNode || node instanceof AbstractMesh)) {
+        node.position.set(0, 0, 0);
+      }
+    }
+
+    // Find and map discrete wheel nodes (supports 4-wheel and 6-wheel chassis)
     for (const node of allNodes) {
       const lower = node.name.toLowerCase();
-      // Match APX01 style (FL_Wheel, FR_Wheel, RL_Wheel, RR_Wheel) or Kenney style (wheel-front-left, etc.)
-      const isFrontLeft = (lower.includes('fl_wheel') || lower.includes('wheel-front-left')) && !lower.includes('primitive');
-      const isFrontRight = (lower.includes('fr_wheel') || lower.includes('wheel-front-right')) && !lower.includes('primitive');
-      const isRearLeft = (lower.includes('rl_wheel') || lower.includes('wheel-back-left')) && !lower.includes('primitive');
-      const isRearRight = (lower.includes('rr_wheel') || lower.includes('wheel-back-right')) && !lower.includes('primitive');
+      const isFrontLeft = (lower.includes('fl_wheel') || lower.includes('wheel_fl') || lower.includes('wheel-front-left') || lower.endsWith('_fl')) && !lower.includes('primitive');
+      const isFrontRight = (lower.includes('fr_wheel') || lower.includes('wheel_fr') || lower.includes('wheel-front-right') || lower.endsWith('_fr')) && !lower.includes('primitive');
+      const isMidLeft = (lower.includes('ml_wheel') || lower.includes('wheel_ml') || lower.endsWith('_ml')) && !lower.includes('primitive');
+      const isMidRight = (lower.includes('mr_wheel') || lower.includes('wheel_mr') || lower.endsWith('_mr')) && !lower.includes('primitive');
+      const isRearLeft = (lower.includes('rl_wheel') || lower.includes('wheel_rl') || lower.includes('wheel-back-left') || lower.endsWith('_rl')) && !lower.includes('primitive');
+      const isRearRight = (lower.includes('rr_wheel') || lower.includes('wheel_rr') || lower.includes('wheel-back-right') || lower.endsWith('_rr')) && !lower.includes('primitive');
 
       if (isFrontLeft && (node instanceof TransformNode || node instanceof AbstractMesh)) {
         this.wheels.frontLeft = node;
         wheelNodeNames.push(node.name);
       } else if (isFrontRight && (node instanceof TransformNode || node instanceof AbstractMesh)) {
         this.wheels.frontRight = node;
+        wheelNodeNames.push(node.name);
+      } else if (isMidLeft && (node instanceof TransformNode || node instanceof AbstractMesh)) {
+        this.wheels.midLeft = node;
+        wheelNodeNames.push(node.name);
+      } else if (isMidRight && (node instanceof TransformNode || node instanceof AbstractMesh)) {
+        this.wheels.midRight = node;
         wheelNodeNames.push(node.name);
       } else if (isRearLeft && (node instanceof TransformNode || node instanceof AbstractMesh)) {
         this.wheels.rearLeft = node;
@@ -127,7 +147,14 @@ export class Vehicle {
     }
 
     // Prepare wheel nodes for Euler rotation
-    const wheelList = [this.wheels.frontLeft, this.wheels.frontRight, this.wheels.rearLeft, this.wheels.rearRight];
+    const wheelList = [
+      this.wheels.frontLeft,
+      this.wheels.frontRight,
+      this.wheels.midLeft,
+      this.wheels.midRight,
+      this.wheels.rearLeft,
+      this.wheels.rearRight,
+    ];
     for (const w of wheelList) {
       if (w) {
         if (w instanceof TransformNode && w.rotationQuaternion) {
@@ -209,7 +236,9 @@ export class Vehicle {
           mName.includes('car') ||
           mName.includes('exterior') ||
           mName.includes('chassis') ||
-          mName.includes('colormap')
+          mName.includes('colormap') ||
+          mName.startsWith('mat_') ||
+          mName.includes('mat_')
         ) {
           // Clone body material so each vehicle instance (player and AI) has an independent paint layer
           const uniqueBodyMat = mat.clone(`BodyMat_${this.rootNode.uniqueId}_${paintId || 'default'}`) as PBRMaterial;
@@ -263,7 +292,9 @@ export class Vehicle {
                                   mName.includes('chassis') ||
                                   mName.includes('colormap') ||
                                   mName.includes('metal') ||
-                                  mName.includes('material');
+                                  mName.includes('material') ||
+                                  mName.startsWith('mat_') ||
+                                  mName.includes('mat_');
           if (isBodyCandidate) {
             candidateMats.add(mesh.material);
           }
@@ -335,24 +366,35 @@ export class Vehicle {
   public updateWheels(spinAngle: number, steerAngle: number): void {
     // Model is oriented along +Z forward; visual wheel yaw matches driver steering angle
     const visualSteer = steerAngle;
+    const visualSpin = (Math.abs(this.yawOffset - Math.PI) < 0.1) ? -spinAngle : spinAngle;
 
     // Front wheels: spin around local pitch (X) and steer around local yaw (Y)
     if (this.wheels.frontLeft) {
-      this.wheels.frontLeft.rotation.x = spinAngle;
+      this.wheels.frontLeft.rotation.x = visualSpin;
       this.wheels.frontLeft.rotation.y = visualSteer;
     }
     if (this.wheels.frontRight) {
-      this.wheels.frontRight.rotation.x = spinAngle;
+      this.wheels.frontRight.rotation.x = visualSpin;
       this.wheels.frontRight.rotation.y = visualSteer;
+    }
+
+    // Mid wheels (e.g. 6x6 VelociRaptor): spin around local pitch (X), steering locked to 0
+    if (this.wheels.midLeft) {
+      this.wheels.midLeft.rotation.x = visualSpin;
+      this.wheels.midLeft.rotation.y = 0;
+    }
+    if (this.wheels.midRight) {
+      this.wheels.midRight.rotation.x = visualSpin;
+      this.wheels.midRight.rotation.y = 0;
     }
 
     // Rear wheels: spin around local pitch (X), steering locked to 0
     if (this.wheels.rearLeft) {
-      this.wheels.rearLeft.rotation.x = spinAngle;
+      this.wheels.rearLeft.rotation.x = visualSpin;
       this.wheels.rearLeft.rotation.y = 0;
     }
     if (this.wheels.rearRight) {
-      this.wheels.rearRight.rotation.x = spinAngle;
+      this.wheels.rearRight.rotation.x = visualSpin;
       this.wheels.rearRight.rotation.y = 0;
     }
   }

@@ -36,35 +36,56 @@ export interface VehicleHandlingProfile extends VehicleHandlingConfig {
  */
 export function createHandlingProfile(
   specs: VehiclePerformanceSpecs,
-  vehicleId: string = 'apex01_flagship',
-  name: string = 'APEX-01 PRO-SPEC',
-  tier: VehicleTier = 3
+  vehicleId: string = 'mercedes_slc',
+  name: string = 'Stuttgart SLC Roadster',
+  tier: VehicleTier = 1
 ): VehicleHandlingProfile {
   // 1. Top Speed (km/h -> m/s)
   const maxForwardSpeed = specs.topSpeedKmH / 3.6;
   const maxReverseSpeed = Math.min(15.0, Math.max(9.0, maxForwardSpeed * 0.22));
 
-  // 2. Acceleration: calibrated so 0-100 km/h (27.78 m/s) matches catalog accelerationSec
-  // Given average powerCurve falloff (~0.76 over 0-100 km/h), a_peak = 27.78 / (accelSec * 0.76)
-  const rawAccel = 27.78 / (Math.max(1.5, specs.accelerationSec) * 0.76);
-  const acceleration = Math.round(rawAccel * 100) / 100;
+  // 2. Acceleration: Calibrated from engineForce / weightKg (or accelerationSec fallback)
+  let acceleration: number;
+  if (specs.engineForce && specs.weightKg) {
+    const rawForceAccel = (specs.engineForce / specs.weightKg) * 1.85;
+    acceleration = Math.round(rawForceAccel * 100) / 100;
+  } else {
+    const rawAccel = 27.78 / (Math.max(1.5, specs.accelerationSec) * 0.76);
+    acceleration = Math.round(rawAccel * 100) / 100;
+  }
 
-  // 3. Braking Deceleration (m/s²) directly from specifications (18.0 to 34.0 m/s²)
-  const brakeForce = specs.brakingForce;
+  // 3. Braking Deceleration: Calibrated from brakeForce / weightKg (or brakingForce fallback)
+  let brakeForce: number;
+  if (specs.brakeForce && specs.weightKg) {
+    const rawBrakeAccel = (specs.brakeForce / specs.weightKg) * 4.2;
+    brakeForce = Math.round(rawBrakeAccel * 100) / 100;
+  } else {
+    brakeForce = specs.brakingForce;
+  }
 
   // 4. Weight & Rotational Inertia
-  // Benchmark: 1,350 kg has rotationalInertia = 1.0. Heavy cars (2,980 kg) reach ~1.55; light cars (798 kg) reach ~0.72.
+  // Benchmark: 1,350 kg has rotationalInertia = 1.0. Heavy cars (3,450 kg) reach ~1.65; light cars (1,450 kg) reach ~0.95.
   const rotationalInertia = Math.max(0.68, Math.min(1.65, Math.pow(specs.weightKg / 1350, 0.45)));
 
-  // 5. Handling & Cornering Grip (handlingRating 1-100)
-  // Base lateral grip: 9.5 (loose/soft vintage) to 17.5 (sticky slick ground-effect)
-  const normalLateralGrip = Math.round((9.2 + (specs.handlingRating / 100) * 8.2) * 100) / 100;
+  // 5. Handling & Cornering Grip
+  // Base lateral grip: derived from gripFactor (0.70 - 0.98) or handlingRating
+  let normalLateralGrip: number;
+  let driftSlipGrip: number;
+  if (specs.gripFactor) {
+    normalLateralGrip = Math.round(13.0 * (specs.gripFactor / 0.85) * 100) / 100;
+    driftSlipGrip = Math.round(5.0 * (specs.gripFactor / 0.85) * 100) / 100;
+  } else {
+    normalLateralGrip = Math.round((9.2 + (specs.handlingRating / 100) * 8.2) * 100) / 100;
+    driftSlipGrip = Math.round((3.8 + (specs.handlingRating / 100) * 2.2) * 100) / 100;
+  }
 
   // Steering rack actuation rate: 4.2 rad/s to 8.2 rad/s
   const steerRate = Math.round((4.2 + (specs.handlingRating / 100) * 4.0) * 100) / 100;
 
-  // Maximum steering angle: 0.50 rad (~28.6°) to 0.58 rad (~33.2°)
-  const maxSteerAngle = Math.round((0.50 + (specs.handlingRating / 100) * 0.08) * 1000) / 1000;
+  // Maximum steering angle: user turnRadiusRad (0.46 - 0.62) or derived
+  const maxSteerAngle = specs.turnRadiusRad !== undefined
+    ? specs.turnRadiusRad
+    : Math.round((0.50 + (specs.handlingRating / 100) * 0.08) * 1000) / 1000;
 
   // Yaw turn-in responsiveness: 2.2 to 4.6
   const yawResponse = Math.round((2.2 + (specs.handlingRating / 100) * 2.4) * 100) / 100;
@@ -75,13 +96,17 @@ export function createHandlingProfile(
     Math.min(0.40, 0.38 - (specs.downforceRating / 100) * 0.18)
   );
 
-  // Aerodynamic downforce grip bonus at top speed (up to +45% base grip for Formula 1 / GT2 cars)
+  // Aerodynamic downforce grip bonus at top speed
   const maxAeroGripBonus = Math.round(((specs.downforceRating / 100) * 0.45 * normalLateralGrip) * 100) / 100;
 
   // Dynamic sliding friction & damping
-  const driftSlipGrip = Math.round((3.8 + (specs.handlingRating / 100) * 2.2) * 100) / 100;
   const lateralDamping = Math.round((4.8 + (specs.handlingRating / 100) * 2.0) * 100) / 100;
   const yawDamping = Math.round((3.8 + (specs.weightKg / 1400) * 1.8) * 100) / 100;
+
+  // Aerodynamic drag
+  const aerodynamicDrag = specs.drag !== undefined
+    ? Math.round(DEFAULT_VEHICLE_CONFIG.aerodynamicDrag * (specs.drag / 0.32) * 10000) / 10000
+    : DEFAULT_VEHICLE_CONFIG.aerodynamicDrag;
 
   // 6. Drivetrain specific dynamics
   let powerOversteerFactor = 0.0;
@@ -95,8 +120,8 @@ export function createHandlingProfile(
       // Front-wheel drive: high directional stability, power understeer when full throttle in turns, no power oversteer
       powerOversteerFactor = 0.0;
       powerUndersteerFactor = 0.85;
-      launchTractionFactor = 0.95; // Slight front-wheel spin under hard launch
-      handbrakeGripMultiplier = 0.32; // Handbrake locks rear wheels sharply for lift-off / handbrake pivots
+      launchTractionFactor = 0.95;
+      handbrakeGripMultiplier = 0.32;
       counterSteerAssist = 1.6;
       break;
 
@@ -106,7 +131,7 @@ export function createHandlingProfile(
       powerUndersteerFactor = 0.0;
       launchTractionFactor = 1.0;
       handbrakeGripMultiplier = 0.38;
-      counterSteerAssist = 2.4; // Rewarding counter-steer catch authority
+      counterSteerAssist = 2.4;
       break;
 
     case 'AWD':
@@ -116,6 +141,15 @@ export function createHandlingProfile(
       launchTractionFactor = 1.18;
       handbrakeGripMultiplier = 0.42;
       counterSteerAssist = 2.0;
+      break;
+
+    case '6WD':
+      // 6-wheel drive heavy all-terrain beast: huge launch traction, solid stability, controlled slides
+      powerOversteerFactor = 0.12;
+      powerUndersteerFactor = 0.18;
+      launchTractionFactor = 1.35;
+      handbrakeGripMultiplier = 0.44;
+      counterSteerAssist = 1.8;
       break;
 
     case 'Dual-Motor AWD':
@@ -161,7 +195,7 @@ export function createHandlingProfile(
     brakeForce,
     reverseAcceleration: Math.min(10.0, Math.max(6.0, brakeForce * 0.30)),
     engineBraking: Math.min(4.8, Math.max(2.6, specs.weightKg / 450)),
-    aerodynamicDrag: DEFAULT_VEHICLE_CONFIG.aerodynamicDrag,
+    aerodynamicDrag,
     steerRate,
     maxSteerAngle,
     highSpeedSteerReduction,

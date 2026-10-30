@@ -41,7 +41,7 @@ export class MultiplayerLobbyUI {
     lapCount: 1,
   };
 
-  private selectedVehicleId: string = 'apex_sport_coupe';
+  private selectedVehicleId: string = 'mercedes_slc';
   private selectedPaintId: string = 'deep_blue';
   private playerName: string = 'Driver 1';
   private hostAddress: string = 'localhost:5050';

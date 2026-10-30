@@ -90,14 +90,14 @@ export class CareerManager {
       credits: 5000,
       reputation: 0,
       currentTier: 1,
-      ownedVehicleIds: ['detective_cruiser', 'apex01_flagship'],
-      selectedVehicleId: 'detective_cruiser',
+      ownedVehicleIds: ['mercedes_slc', 'bmw_x6'],
+      selectedVehicleId: 'mercedes_slc',
       unlockedEventIds: ['rookie_sprint_1'],
       completedEvents: {},
       vehicleUpgrades: {},
       vehiclePaints: {
-        detective_cruiser: 'gloss_black',
-        apex01_flagship: 'pearl_white',
+        mercedes_slc: 'metallic_silver',
+        bmw_x6: 'deep_blue',
       },
     };
   }
@@ -142,7 +142,7 @@ export class CareerManager {
           reputation: typeof parsed.reputation === 'number' && !isNaN(parsed.reputation) ? Math.max(0, parsed.reputation) : defaults.reputation,
           currentTier: typeof parsed.currentTier === 'number' ? Math.max(1, Math.min(5, parsed.currentTier)) : defaults.currentTier,
           ownedVehicleIds: Array.isArray(parsed.ownedVehicleIds) && parsed.ownedVehicleIds.length > 0
-            ? Array.from(new Set(['detective_cruiser', 'apex01_flagship', ...parsed.ownedVehicleIds]))
+            ? Array.from(new Set(['mercedes_slc', ...parsed.ownedVehicleIds]))
             : defaults.ownedVehicleIds,
           selectedVehicleId: typeof parsed.selectedVehicleId === 'string' && parsed.selectedVehicleId.length > 0
             ? parsed.selectedVehicleId
@@ -174,12 +174,9 @@ export class CareerManager {
   }
 
   private ensureIntegrity(): void {
-    // Ensure starting cars are owned
-    if (!this.data.ownedVehicleIds.includes('detective_cruiser')) {
-      this.data.ownedVehicleIds.push('detective_cruiser');
-    }
-    if (!this.data.ownedVehicleIds.includes('apex01_flagship')) {
-      this.data.ownedVehicleIds.push('apex01_flagship');
+    // Ensure starting car is owned
+    if (!this.data.ownedVehicleIds.includes('mercedes_slc')) {
+      this.data.ownedVehicleIds.push('mercedes_slc');
     }
 
     // Ensure first event is unlocked
@@ -637,13 +634,13 @@ export class CareerManager {
     const newUnlockedVehicles: string[] = [];
     for (const v of VEHICLE_CATALOG) {
       if (v.unlock.method === 'career_trophy' && !this.isVehicleOwned(v.id)) {
-        if (v.id === 'sanremo_70' && this.isEventCompleted('rookie_sprint_1')) {
+        if (v.id === 'velociraptor' && this.isEventCompleted('rookie_sprint_1')) {
           this.unlockVehicleReward(v.id);
           newUnlockedVehicles.push(v.name);
-        } else if (v.id === 'apex_sport_coupe' && this.isEventCompleted('perf_sprint_1')) {
+        } else if (v.id === 'nissan_gtr_r34' && this.isEventCompleted('perf_sprint_1')) {
           this.unlockVehicleReward(v.id);
           newUnlockedVehicles.push(v.name);
-        } else if (v.id === 'm3_gtr_gt2' && this.isEventCompleted('super_sprint_1')) {
+        } else if (v.id === 'aventador' && this.isEventCompleted('super_sprint_1')) {
           this.unlockVehicleReward(v.id);
           newUnlockedVehicles.push(v.name);
         }

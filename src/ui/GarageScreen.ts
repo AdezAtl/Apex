@@ -21,7 +21,7 @@ export class GarageScreen {
   private isVisible: boolean = false;
   private isNavigating: boolean = false;
   private activePaintId: string = 'pearl_white';
-  private activeVehicleId: string = 'apex01_flagship';
+  private activeVehicleId: string = 'mercedes_slc';
   private activeTierFilter: string = 'all';
   private activeRightTab: 'upgrades' | 'paint' = 'upgrades';
   private boundKeyDown: (e: KeyboardEvent) => void;
@@ -29,7 +29,7 @@ export class GarageScreen {
   constructor(
     callbacks: GarageScreenCallbacks,
     initialPaintId: string = 'pearl_white',
-    initialVehicleId: string = 'apex01_flagship'
+    initialVehicleId: string = 'mercedes_slc'
   ) {
     this.callbacks = callbacks;
     this.activePaintId = initialPaintId;
@@ -46,7 +46,7 @@ export class GarageScreen {
     this.container.id = 'garage-screen-overlay';
     this.container.className = 'garage-viewport-container hidden';
 
-    const activeVehicle = getVehicleById(this.activeVehicleId) || VEHICLE_CATALOG[9];
+    const activeVehicle = getVehicleById(this.activeVehicleId) || VEHICLE_CATALOG[0];
 
     this.container.innerHTML = `
       <!-- Top Motorsport Header Bar -->
