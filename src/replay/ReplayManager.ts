@@ -161,7 +161,7 @@ export class ReplayManager {
         this.scene
       );
       this.replayCamera.minZ = 0.2;
-      this.replayCamera.maxZ = 350;
+      this.replayCamera.maxZ = 3500;
       this.replayCamera.fov = 0.75;
     }
 

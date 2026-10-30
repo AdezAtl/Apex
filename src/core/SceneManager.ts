@@ -171,9 +171,6 @@ export class SceneManager {
   ): void {
     if (this.chaseCamera && this.currentCameraMode !== 'orbit') {
       this.chaseCamera.update(carPosition, carYaw, forwardSpeed, lateralSpeed, steeringAngle, dt);
-      if (this.skybox) {
-        this.skybox.position.copyFrom(this.chaseCamera.camera.position);
-      }
     }
   }
 
@@ -452,6 +449,19 @@ export class SceneManager {
     this.sunLight.diffuse = env.sunDiffuse;
     this.sunLight.specular = env.sunSpecular;
     this.sunLight.intensity = 1.35;
+
+    if (env.fogMode !== undefined) {
+      this.scene.fogMode = env.fogMode;
+    }
+    if (env.fogStart !== undefined) {
+      this.scene.fogStart = env.fogStart;
+    }
+    if (env.fogEnd !== undefined) {
+      this.scene.fogEnd = env.fogEnd;
+    }
+    if (env.fogColor) {
+      this.scene.fogColor = env.fogColor;
+    }
   }
 
   /**
@@ -470,17 +480,19 @@ export class SceneManager {
     this.scene.clearColor = new Color4(0.55, 0.68, 0.82, 1.0);
     this.scene.fogMode = Scene.FOGMODE_LINEAR;
     this.scene.fogColor = new Color3(0.68, 0.77, 0.86);
-    this.scene.fogStart = 80.0;
-    this.scene.fogEnd = 260.0;
+    this.scene.fogStart = 400.0;
+    this.scene.fogEnd = 3500.0;
 
-    // 2. Continuous 360-degree daytime sky dome
-    const skybox = MeshBuilder.CreateSphere('SkyBox', { diameter: 1200.0, segments: 32 }, this.scene);
+    // 2. Continuous 360-degree daytime sky dome (disableDepthWrite & renderingGroupId 0 ensure it stays permanently in background)
+    const skybox = MeshBuilder.CreateSphere('SkyBox', { diameter: 4500.0, segments: 32 }, this.scene);
     skybox.infiniteDistance = true;
+    skybox.renderingGroupId = 0;
     skybox.isPickable = false;
 
     const skyMat = new StandardMaterial('SkyBoxMat', this.scene);
     skyMat.backFaceCulling = false;
     skyMat.disableLighting = true;
+    skyMat.disableDepthWrite = true;
 
     // High-resolution procedural sky gradient with cirrus clouds & solar bloom
     const skyTex = new DynamicTexture('SkyTexture', { width: 1024, height: 512 }, this.scene, false);
@@ -537,10 +549,10 @@ export class SceneManager {
   }
 
   private createGroundTerrain(): void {
-    // 1. Broad flat valley floor underpinning track & infield
+    // 1. Broad flat valley floor underpinning track & infield across the full 5km circuit area
     const terrain = MeshBuilder.CreateGround(
       'GroundTerrain',
-      { width: 500, height: 500, subdivisions: 6 },
+      { width: 5000, height: 5000, subdivisions: 10 },
       this.scene
     );
     terrain.position.y = -0.04;
@@ -570,8 +582,8 @@ export class SceneManager {
       turfTex.update();
     }
 
-    turfTex.uScale = 40;
-    turfTex.vScale = 40;
+    turfTex.uScale = 400;
+    turfTex.vScale = 400;
     terrainMat.diffuseTexture = turfTex;
     terrainMat.diffuseColor = new Color3(0.85, 0.90, 0.82);
     terrainMat.specularColor = new Color3(0.02, 0.02, 0.02);

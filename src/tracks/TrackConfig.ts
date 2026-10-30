@@ -34,6 +34,8 @@ export interface TrackEnvironmentConfig {
   fogMode?: number;
   fogDensity?: number;
   fogColor?: Color3;
+  fogStart?: number;
+  fogEnd?: number;
 }
 
 export interface MinimapDriftZone {

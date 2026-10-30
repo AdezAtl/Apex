@@ -54,7 +54,7 @@ export class ChaseCamera {
     this.camera = new UniversalCamera('ChaseCamera', initialPosition.clone(), scene);
     this.camera.fov = this.currentBaseFov;
     this.camera.minZ = 0.2;
-    this.camera.maxZ = 350;
+    this.camera.maxZ = 3500;
 
     const forward = new Vector3(Math.sin(initialYaw), 0, Math.cos(initialYaw));
     this.currentPosition = initialPosition

@@ -895,6 +895,8 @@ export const SavannaRidgeCircuit: CircuitDefinition = {
     sunDiffuse: new Color3(1.0, 0.95, 0.88),
     sunSpecular: new Color3(0.85, 0.85, 0.85),
     groundColor: new Color3(0.20, 0.22, 0.16),
+    fogStart: 600.0,
+    fogEnd: 4000.0,
   },
   events: savannaRidgeEvents,
   minimap: {
@@ -985,7 +987,7 @@ export const SavannaRidgeCircuit: CircuitDefinition = {
 
     const sfStrip = MeshBuilder.CreateGround('SR_StartFinish_Strip', { width: 14.0, height: 1.8 }, scene);
     sfStrip.position.set(937.92, yMarking, -461.00);
-    sfStrip.rotation.y = -1.575 + Math.PI / 2;
+    sfStrip.rotation.y = -1.575;
     sfStrip.material = sfMat;
     sfStrip.parent = parent;
     sfStrip.isPickable = false;
@@ -995,7 +997,7 @@ export const SavannaRidgeCircuit: CircuitDefinition = {
     const sprintStrip = MeshBuilder.CreateGround('SR_SprintFinish_Strip', { width: 14.0, height: 1.8 }, scene);
     sprintStrip.position.set(sprintEnd.position.x, yMarking, sprintEnd.position.z);
     const sprintYaw = Math.atan2(sprintEnd.tangent.x, sprintEnd.tangent.z);
-    sprintStrip.rotation.y = sprintYaw + Math.PI / 2;
+    sprintStrip.rotation.y = sprintYaw;
     sprintStrip.material = sfMat;
     sprintStrip.parent = parent;
     sprintStrip.isPickable = false;
