@@ -12,6 +12,7 @@ import {
 import { CircuitDefinition } from './TrackConfig';
 import { RaceEventConfig } from '../events/EventConfig';
 import { RoadSamplePoint } from '../environment/RoadMeshBuilder';
+import { RoadsideAdManager } from '../environment/RoadsideAdManager';
 
 // 294 discrete road sample points along the 980.0m continuous motorsport circuit (13.0m wide)
 const forestValleyRoadSamples: RoadSamplePoint[] = [
@@ -551,7 +552,50 @@ export const ForestValleyCircuit: CircuitDefinition = {
     // Verges are built continuously along the full spline by RoadMeshBuilder.buildVerges
   },
 
-  buildRoadsideInfrastructure: (scene: Scene, parent: TransformNode, yOffset: number) => {
+  buildRoadsideInfrastructure: async (scene: Scene, parent: TransformNode, yOffset: number) => {
+    const adManager = RoadsideAdManager.getInstance(scene);
+    await adManager.initialize();
+
+    // 1. Start/Finish Overhead Sponsor Gantry spanning the 13m road at (0, 0, 0)
+    adManager.createSponsorGantry('FV_Gantry_StartFinish', new Vector3(0, yOffset, 0), Math.PI, parent);
+
+    // 2. North Straight Big Ad Screen (3x scale = 24m x 11.4m) approaching Turn 1
+    adManager.createBigAdScreen('FV_BigAd_NorthStraight', new Vector3(14.0, yOffset, 65.0), Math.PI - 0.22, parent);
+
+    // 3. Paddock Architecture along Main Straight (Outer West side, X ≈ -22)
+    // - Skyscraper Tower with 4:3 Portrait LED Wall Ad facing track (+X)
+    adManager.createBuildingTower('FV_Tower_Paddock_Ad', new Vector3(-24.0, yOffset, 15.0), Math.PI * 0.5, parent);
+
+    // - Rooftop Ad Building facing track
+    adManager.createBuildingRooftop('FV_Rooftop_Paddock_Ad', new Vector3(-22.0, yOffset, -22.0), Math.PI * 0.5, parent);
+
+    // - Medium and Small Filler Buildings completing paddock row
+    adManager.createBuildingFiller('FV_Filler_Med_Paddock', new Vector3(-24.0, yOffset, 42.0), Math.PI * 0.5, 'med', parent);
+    adManager.createBuildingFiller('FV_Filler_Small_Paddock', new Vector3(-22.0, yOffset, -48.0), Math.PI * 0.5, 'small', parent);
+
+    // 4. Grand Back Straight Billboards (Cars travel south, Z: +10 down to -140, X ≈ 152)
+    // - Highway Mega Billboard (12m x 5m, clearance 11.5m)
+    adManager.createHighwayMegaBillboard('FV_MegaBillboard_BackStraight', new Vector3(164.0, yOffset, -30.0), Math.PI, parent);
+
+    // - Infield Big Ad Screen (3x scale) facing oncoming southbound cars
+    adManager.createBigAdScreen('FV_BigAd_BackStraight', new Vector3(138.0, yOffset, -65.0), 0.20, parent);
+
+    // - Roadside Dual Billboard (8m x 3.8m, dual-sided)
+    adManager.createBillboardDual('FV_DualBillboard_BackStraight', new Vector3(164.0, yOffset, -100.0), Math.PI * 0.5, parent);
+
+    // 5. Continuous Track Barrier Banners along South Sweeper runoff
+    const barrierPositions = [
+      { x: 154.0, z: -130.0, rot: -0.3 },
+      { x: 148.0, z: -142.0, rot: -0.7 },
+      { x: 136.0, z: -150.0, rot: -1.2 },
+      { x: 120.0, z: -154.0, rot: -1.57 },
+      { x: 104.0, z: -154.0, rot: -1.57 },
+    ];
+    barrierPositions.forEach((b, idx) => {
+      adManager.createBarrierBanner(`FV_Barrier_SouthSweeper_${idx}`, new Vector3(b.x, yOffset, b.z), b.rot, parent);
+    });
+
+    // 6. Classic motorsport brake boards for racing reference
     const boardMat = new StandardMaterial('FV_BrakeBoardMat', scene);
     boardMat.diffuseColor = new Color3(0.9, 0.9, 0.9);
     const postMat = new StandardMaterial('FV_PostMat', scene);

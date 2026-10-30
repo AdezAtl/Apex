@@ -85,6 +85,6 @@ export interface CircuitDefinition {
   barrierLimit?: number;
   buildRoadMarkings: (scene: Scene, parent: TransformNode, yOffset: number) => void;
   buildRoadVerges: (scene: Scene, parent: TransformNode, yOffset: number) => void;
-  buildRoadsideInfrastructure: (scene: Scene, parent: TransformNode, yOffset: number) => void;
+  buildRoadsideInfrastructure: (scene: Scene, parent: TransformNode, yOffset: number) => Promise<void> | void;
   buildScenery: (scene: Scene, parent: TransformNode) => Promise<void>;
 }

@@ -11,6 +11,7 @@ import { CircuitDefinition } from './TrackConfig';
 import { RaceEventConfig } from '../events/EventConfig';
 import { RoadSamplePoint } from '../environment/RoadMeshBuilder';
 import { CheckpointData } from '../checkpoints/CheckpointManager';
+import { RoadsideAdManager } from '../environment/RoadsideAdManager';
 
 // 659 discrete road sample points derived directly from OpenStreetMap GeoJSON road (Way 96662776)
 // Total circuit measured length: 5536.2m (including 2,210.6m GeoJSON spine + flowing return loop)
@@ -1007,7 +1008,10 @@ export const SavannaRidgeCircuit: CircuitDefinition = {
     // Built continuously along full spline by RoadMeshBuilder.buildVerges
   },
 
-  buildRoadsideInfrastructure: (scene: Scene, parent: TransformNode, yOffset: number) => {
+  buildRoadsideInfrastructure: async (scene: Scene, parent: TransformNode, yOffset: number) => {
+    const adManager = RoadsideAdManager.getInstance(scene);
+    await adManager.initialize();
+
     const postMat = new StandardMaterial('SR_PostMat', scene);
     postMat.diffuseColor = new Color3(0.25, 0.25, 0.25);
     postMat.specularColor = new Color3(0.1, 0.1, 0.1);
@@ -1016,9 +1020,104 @@ export const SavannaRidgeCircuit: CircuitDefinition = {
     bannerMat.diffuseColor = new Color3(0.85, 0.15, 0.15);
     bannerMat.specularColor = new Color3(0.2, 0.2, 0.2);
 
-    // Place motorsport distance boards every 30 samples along the 5.5km track
+    // 1. Start/Finish Overhead Sponsor Gantry (Over checkered start line at sample 0)
+    const p0 = savannaRidgeRoadSamples[0];
+    const yaw0 = Math.atan2(p0.tangent.x, p0.tangent.z);
+    adManager.createSponsorGantry('SR_Gantry_StartFinish', new Vector3(p0.position.x, yOffset, p0.position.z), yaw0 + Math.PI, parent);
+
+    // 2. Sprint Finish Overhead Sponsor Gantry (At 2.2km sprint finish line, sample 263)
+    const p263 = savannaRidgeRoadSamples[263];
+    const yaw263 = Math.atan2(p263.tangent.x, p263.tangent.z);
+    adManager.createSponsorGantry('SR_Gantry_SprintFinish', new Vector3(p263.position.x, yOffset, p263.position.z), yaw263 + Math.PI, parent);
+
+    // 3. Paddock Architecture & Illuminated Displays along Main Straight (Outer left verge)
+    const ptTower = savannaRidgeRoadSamples[8];
+    const posTower = ptTower.position.add(ptTower.rightNormal.scale(-((ptTower.width || 13.0) / 2 + 24)));
+    posTower.y = yOffset;
+    const rotTower = Math.atan2(ptTower.rightNormal.x, ptTower.rightNormal.z);
+    adManager.createBuildingTower('SR_Paddock_Tower_Ad', posTower, rotTower, parent);
+
+    const ptRoof = savannaRidgeRoadSamples[22];
+    const posRoof = ptRoof.position.add(ptRoof.rightNormal.scale(-((ptRoof.width || 13.0) / 2 + 22)));
+    posRoof.y = yOffset;
+    const rotRoof = Math.atan2(ptRoof.rightNormal.x, ptRoof.rightNormal.z);
+    adManager.createBuildingRooftop('SR_Paddock_Rooftop_Ad', posRoof, rotRoof, parent);
+
+    const ptMed = savannaRidgeRoadSamples[15];
+    const posMed = ptMed.position.add(ptMed.rightNormal.scale(-((ptMed.width || 13.0) / 2 + 23)));
+    posMed.y = yOffset;
+    adManager.createBuildingFiller('SR_Paddock_Filler_Med', posMed, rotTower, 'med', parent);
+
+    const ptSmall = savannaRidgeRoadSamples[650];
+    const posSmall = ptSmall.position.add(ptSmall.rightNormal.scale(-((ptSmall.width || 13.0) / 2 + 21)));
+    posSmall.y = yOffset;
+    const rotSmall = Math.atan2(ptSmall.rightNormal.x, ptSmall.rightNormal.z);
+    adManager.createBuildingFiller('SR_Paddock_Filler_Small', posSmall, rotSmall, 'small', parent);
+
+    // 4. Big Ad Screens (3x scale = 24m x 11.4m LED Billboards)
+    // - Sample 95: High-speed approach before Turn 4
+    const pt95 = savannaRidgeRoadSamples[95];
+    const pos95 = pt95.position.add(pt95.rightNormal.scale((pt95.width || 13.0) / 2 + 13.0));
+    pos95.y = yOffset;
+    const yaw95 = Math.atan2(pt95.tangent.x, pt95.tangent.z) + Math.PI - 0.25;
+    adManager.createBigAdScreen('SR_BigAd_Turn4', pos95, yaw95, parent);
+
+    // - Sample 240: Fast run into Sprint finish sector
+    const pt240 = savannaRidgeRoadSamples[240];
+    const pos240 = pt240.position.add(pt240.rightNormal.scale((pt240.width || 13.0) / 2 + 13.0));
+    pos240.y = yOffset;
+    const yaw240 = Math.atan2(pt240.tangent.x, pt240.tangent.z) + Math.PI - 0.20;
+    adManager.createBigAdScreen('SR_BigAd_SprintApproach', pos240, yaw240, parent);
+
+    // - Sample 430: Grand Southern Back Straight
+    const pt430 = savannaRidgeRoadSamples[430];
+    const pos430 = pt430.position.add(pt430.rightNormal.scale(-((pt430.width || 13.0) / 2 + 13.0)));
+    pos430.y = yOffset;
+    const yaw430 = Math.atan2(pt430.tangent.x, pt430.tangent.z) + Math.PI + 0.25;
+    adManager.createBigAdScreen('SR_BigAd_BackStraight', pos430, yaw430, parent);
+
+    // 5. Highway Mega Billboards (12m x 5m, clearance 11.5m)
+    const megaIndices = [160, 330, 540];
+    megaIndices.forEach((idx, mIdx) => {
+      const pt = savannaRidgeRoadSamples[idx];
+      const side = mIdx % 2 === 0 ? 1 : -1;
+      const pos = pt.position.add(pt.rightNormal.scale(side * ((pt.width || 13.0) / 2 + 11.5)));
+      pos.y = yOffset;
+      const yaw = Math.atan2(pt.tangent.x, pt.tangent.z) + Math.PI - side * 0.15;
+      adManager.createHighwayMegaBillboard(`SR_MegaBillboard_${idx}`, pos, yaw, parent);
+    });
+
+    // 6. Roadside Dual Billboards (8m x 3.8m, dual-sided)
+    const dualIndices = [50, 190, 290, 380, 480, 590];
+    dualIndices.forEach((idx, dIdx) => {
+      const pt = savannaRidgeRoadSamples[idx];
+      const side = dIdx % 2 === 0 ? 1 : -1;
+      const pos = pt.position.add(pt.rightNormal.scale(side * ((pt.width || 13.0) / 2 + 9.5)));
+      pos.y = yOffset;
+      const yaw = Math.atan2(pt.tangent.x, pt.tangent.z) + Math.PI * 0.5;
+      adManager.createBillboardDual(`SR_DualBillboard_${idx}`, pos, yaw, parent);
+    });
+
+    // 7. Continuous Track Barrier Banners along critical corner runoffs
+    const barrierSegments = [
+      [68, 70, 72],
+      [212, 214, 216],
+      [350, 352, 354],
+      [500, 502, 504],
+    ];
+    barrierSegments.forEach((segment, sIdx) => {
+      segment.forEach((idx) => {
+        const pt = savannaRidgeRoadSamples[idx];
+        const pos = pt.position.add(pt.rightNormal.scale((pt.width || 13.0) / 2 + 2.2));
+        pos.y = yOffset;
+        const yaw = Math.atan2(pt.tangent.x, pt.tangent.z) + Math.PI;
+        adManager.createBarrierBanner(`SR_Barrier_${sIdx}_${idx}`, pos, yaw, parent);
+      });
+    });
+
+    // 8. Distance marker boards along remaining sectors
     const samplesCount = savannaRidgeRoadSamples.length;
-    for (let i = 0; i < samplesCount; i += 30) {
+    for (let i = 0; i < samplesCount; i += 45) {
       const pt = savannaRidgeRoadSamples[i];
       const curWidth = pt.width || 13.0;
       const rightPos = pt.position.add(pt.rightNormal.scale(curWidth / 2 + 1.8));

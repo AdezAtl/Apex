@@ -174,7 +174,7 @@ export class TrackLoader {
     circuit.buildRoadVerges(this.scene, this.trackRoot, this.roadSurfaceY);
 
     // Build circuit-specific distance boards & barriers
-    circuit.buildRoadsideInfrastructure(this.scene, this.trackRoot, this.roadSurfaceY);
+    await circuit.buildRoadsideInfrastructure(this.scene, this.trackRoot, this.roadSurfaceY);
 
     // Build circuit-specific instanced scenery (forest pines/oaks vs coastal palms/cypresses/rocks)
     await circuit.buildScenery(this.scene, this.trackRoot);
