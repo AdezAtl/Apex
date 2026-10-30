@@ -16,6 +16,7 @@ export interface RoadSamplePoint {
   rightNormal: Vector3;
   distance: number;
   curvatureDeg: number;
+  width?: number;
 }
 
 export class RoadMeshBuilder {
@@ -102,9 +103,10 @@ export class RoadMeshBuilder {
     const totalLength = samples[totalSamples - 1].distance +
       Vector3.Distance(samples[totalSamples - 1].position, samples[0].position);
     
-    // UV tile repeats seamlessly modulo 1.0 (122 repeats across 980m -> ~8.03m per repeat)
-    const tileLength = totalLength / 122.0;
-    const halfWidth = roadWidth / 2.0;
+    // UV tile repeats seamlessly modulo 1.0 (~8.0m per repeat)
+    const repeatCount = Math.max(1, Math.round(totalLength / 8.0));
+    const tileLength = totalLength / repeatCount;
+    const defaultHalfWidth = roadWidth / 2.0;
 
     for (let segIdx = 0; segIdx < segmentCount; segIdx++) {
       const positions: number[] = [];
@@ -119,6 +121,7 @@ export class RoadMeshBuilder {
       for (let s = 0; s <= stepCount; s++) {
         const sampleIndex = (startIdx + s) % totalSamples;
         const pt = samples[sampleIndex];
+        const halfWidth = pt.width !== undefined ? pt.width / 2.0 : defaultHalfWidth;
 
         // Left, Center, Right
         const left = pt.position.subtract(pt.rightNormal.scale(halfWidth));
@@ -190,7 +193,7 @@ export class RoadMeshBuilder {
     roadSurfaceY: number = 0.05
   ): Mesh[] {
     const yLine = roadSurfaceY + 0.002;
-    const halfRoad = roadWidth / 2.0;
+    const defaultHalfRoad = roadWidth / 2.0;
     const halfLine = lineWidth / 2.0;
     const totalSamples = samples.length;
 
@@ -202,6 +205,7 @@ export class RoadMeshBuilder {
 
       for (let i = 0; i <= totalSamples; i++) {
         const pt = samples[i % totalSamples];
+        const halfRoad = pt.width !== undefined ? pt.width / 2.0 : defaultHalfRoad;
         const centerLinePos = pt.position.add(pt.rightNormal.scale(sideFactor * (halfRoad - halfLine)));
         const innerPt = centerLinePos.subtract(pt.rightNormal.scale(sideFactor * halfLine));
         const outerPt = centerLinePos.add(pt.rightNormal.scale(sideFactor * halfLine));
@@ -253,7 +257,7 @@ export class RoadMeshBuilder {
   ): Mesh[] {
     const kerbMeshes: Mesh[] = [];
     const totalSamples = samples.length;
-    const halfRoad = roadWidth / 2.0;
+    const defaultHalfRoad = roadWidth / 2.0;
 
     // Filter contiguous corner apex regions where curvature is greater than 2.0 degrees
     const isApex = (i: number) => {
@@ -304,6 +308,7 @@ export class RoadMeshBuilder {
         for (let s = 0; s <= count; s++) {
           const sampleIdx = (interval.start + s) % totalSamples;
           const pt = samples[sampleIdx];
+          const halfRoad = pt.width !== undefined ? pt.width / 2.0 : defaultHalfRoad;
 
           const innerPos = pt.position.add(pt.rightNormal.scale(sideFactor * halfRoad));
           const outerPos = pt.position.add(pt.rightNormal.scale(sideFactor * (halfRoad + kerbWidth)));
@@ -362,7 +367,7 @@ export class RoadMeshBuilder {
     roadSurfaceY: number = 0.05
   ): Mesh[] {
     const yVerge = roadSurfaceY - 0.005;
-    const halfRoad = roadWidth / 2.0;
+    const defaultHalfRoad = roadWidth / 2.0;
     const totalSamples = samples.length;
 
     const buildSideVerge = (name: string, isRight: boolean): Mesh => {
@@ -373,6 +378,7 @@ export class RoadMeshBuilder {
 
       for (let i = 0; i <= totalSamples; i++) {
         const pt = samples[i % totalSamples];
+        const halfRoad = pt.width !== undefined ? pt.width / 2.0 : defaultHalfRoad;
         const innerPt = pt.position.add(pt.rightNormal.scale(sideFactor * halfRoad));
         const outerPt = pt.position.add(pt.rightNormal.scale(sideFactor * (halfRoad + vergeWidth)));
 

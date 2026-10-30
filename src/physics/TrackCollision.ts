@@ -28,6 +28,13 @@ export class TrackCollision {
     this.roadSurfaceY = circuit.roadSurfaceY;
     this.boundaries = circuit.boundaries;
     this.segments = circuit.centerlineSegments;
+    if (circuit.barrierLimit !== undefined) {
+      this.barrierLimit = circuit.barrierLimit;
+      this.trackHalfWidth = circuit.trackHalfWidth || (this.barrierLimit - 0.5);
+    } else {
+      this.barrierLimit = 7.0;
+      this.trackHalfWidth = 6.5;
+    }
   }
 
   /**

@@ -571,7 +571,9 @@ export class AIOpponent {
     toCar.y = 0;
     const distToCenter = toCar.length();
 
-    const maxRoadWidth = 6.0; // 6.0m from centerline on 13.0m wide circuit (0.5m buffer from asphalt edge)
+    // Corner-adaptive boundary containment based on local curvature
+    const curv = closestWp.curvatureDeg || 0;
+    const maxRoadWidth = Math.max(4.5, Math.min(6.5, 6.5 - curv * 0.35));
     if (distToCenter > maxRoadWidth && distToCenter > 0.001) {
       // Gently push back inside
       const dirToCenter = toCar.scale(-1.0 / distToCenter);

@@ -79,6 +79,8 @@ export interface CircuitDefinition {
   environment: TrackEnvironmentConfig;
   events: RaceEventConfig[];
   minimap: CircuitMinimapConfig;
+  trackHalfWidth?: number;
+  barrierLimit?: number;
   buildRoadMarkings: (scene: Scene, parent: TransformNode, yOffset: number) => void;
   buildRoadVerges: (scene: Scene, parent: TransformNode, yOffset: number) => void;
   buildRoadsideInfrastructure: (scene: Scene, parent: TransformNode, yOffset: number) => void;

@@ -76,10 +76,11 @@ export class TrackLoader {
 
     if (circuit.roadSamples && circuit.roadSamples.length > 0) {
       const roadBuilder = new RoadMeshBuilder(this.scene);
+      const segmentCount = Math.max(98, Math.round(circuit.measuredLengthMeters / 30));
       const roadMeshes = roadBuilder.buildRoadSegments(
         this.trackRoot,
         circuit.roadSamples,
-        98,
+        segmentCount,
         13.0,
         this.roadSurfaceY
       );
