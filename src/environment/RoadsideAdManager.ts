@@ -5,7 +5,6 @@ import {
   Color3,
   SceneLoader,
   Mesh,
-  AbstractMesh,
   StandardMaterial,
   Texture,
 } from '@babylonjs/core';
@@ -13,14 +12,13 @@ import '@babylonjs/loaders/glTF';
 
 /**
  * RoadsideAdManager
- * Manages loading, material application, and instantiation of unified roadside structures
- * and separate illuminated ad screens across Apex circuits.
+ * Manages loading, caching, material application, and instantiation of unified roadside
+ * structures and separated illuminated ad screens across Savanna Ridge and Forest Valley.
  */
 export class RoadsideAdManager {
   private static instance: RoadsideAdManager | null = null;
 
   private scene: Scene;
-  private templatesRoot: TransformNode;
   private isLoaded: boolean = false;
   private loadPromise: Promise<void> | null = null;
 
@@ -28,31 +26,30 @@ export class RoadsideAdManager {
   public landscapeAdMaterial!: StandardMaterial;
   public portraitAdMaterial!: StandardMaterial;
 
-  // Cached template structures (from roadside_asset_kit.glb)
-  private megaFrameTemplate!: AbstractMesh;
-  private roadsideFrameTemplate!: AbstractMesh;
-  private gantryFrameTemplate!: AbstractMesh;
-  private barrierFrameTemplate!: AbstractMesh;
-  private towerBodyTemplate!: AbstractMesh;
-  private rooftopBodyTemplate!: AbstractMesh;
-  private fillerMedTemplate!: AbstractMesh;
-  private fillerSmallTemplate!: AbstractMesh;
+  // Cached template structures (from roadside_asset_kit.glb & big_ad_screen.glb)
+  private gantryStructTemplate: Mesh | null = null;
+  private highwayMegaStructTemplate: Mesh | null = null;
+  private roadsideDualStructTemplate: Mesh | null = null;
+  private barrierBannerStructTemplate: Mesh | null = null;
+  private towerStructTemplate: TransformNode | null = null;
+  private rooftopStructTemplate: TransformNode | null = null;
+  private fillerMedStructTemplate: TransformNode | null = null;
+  private fillerSmallStructTemplate: TransformNode | null = null;
+  private bigAdStructTemplate: Mesh | null = null;
 
-  // Cached template ad screens (loaded and handled separately)
-  private megaScreenFrontTemplate!: Mesh;
-  private megaScreenBackTemplate!: Mesh;
-  private roadsideScreenFrontTemplate!: Mesh;
-  private roadsideScreenBackTemplate!: Mesh;
-  private gantryScreenTemplate!: Mesh;
-  private barrierScreenTemplate!: Mesh;
-  private towerScreenTemplate!: Mesh;
-  private rooftopScreenTemplate!: Mesh;
-  private bigAdScreenTemplate!: Mesh;
+  // Cached template ad screens
+  private gantryScreenTemplate: Mesh | null = null;
+  private highwayMegaFrontScreenTemplate: Mesh | null = null;
+  private highwayMegaBackScreenTemplate: Mesh | null = null;
+  private roadsideDualFrontScreenTemplate: Mesh | null = null;
+  private roadsideDualBackScreenTemplate: Mesh | null = null;
+  private barrierBannerScreenTemplate: Mesh | null = null;
+  private towerScreenTemplate: Mesh | null = null;
+  private rooftopScreenTemplate: Mesh | null = null;
+  private bigAdScreenTemplate: Mesh | null = null;
 
   private constructor(scene: Scene) {
     this.scene = scene;
-    this.templatesRoot = new TransformNode('RoadsideAd_TemplatesRoot', this.scene);
-    this.templatesRoot.setEnabled(false);
   }
 
   public static getInstance(scene: Scene): RoadsideAdManager {
@@ -85,42 +82,51 @@ export class RoadsideAdManager {
       this.scene
     );
 
-    // Parent all kit meshes under disabled templatesRoot so they don't render at raw Blender coords
-    for (const mesh of kitResult.meshes) {
-      if (!mesh.parent || mesh.parent === this.scene.getMeshByName('__root__')) {
-        mesh.parent = this.templatesRoot;
-      }
-      mesh.isPickable = false;
-      mesh.receiveShadows = true;
+    // Hide raw kit root so templates do not render at authoring positions
+    const kitRoot = kitResult.meshes.find((m) => m.name === '__root__');
+    if (kitRoot) {
+      kitRoot.setEnabled(false);
+      kitRoot.position.set(0, -5000, 0);
     }
 
-    // 3. Extract and cache structural base frames
-    this.megaFrameTemplate = this.findMesh(kitResult.meshes, 'Billboard_Highway_Mega_Frame')!;
-    this.roadsideFrameTemplate = this.findMesh(kitResult.meshes, 'Billboard_Roadside_Dual_Frame')!;
-    this.gantryFrameTemplate = this.findMesh(kitResult.meshes, 'Track_Sponsor_Gantry_Frame')!;
-    this.barrierFrameTemplate = this.findMesh(kitResult.meshes, 'Track_Barrier_Banner_Frame')!;
-    this.towerBodyTemplate = this.findMesh(kitResult.meshes, 'Bldg_Tower_WallAd_Body')!;
-    this.rooftopBodyTemplate = this.findMesh(kitResult.meshes, 'Bldg_Rooftop_Ad_Body')!;
-    this.fillerMedTemplate = this.findMesh(kitResult.meshes, 'Bldg_Filler_Med_Body')!;
-    this.fillerSmallTemplate = this.findMesh(kitResult.meshes, 'Bldg_Filler_Small_Body')!;
+    const kitMeshes = kitResult.meshes as Mesh[];
+    const kitNodes = kitResult.transformNodes;
 
-    // 4. Extract and cache screen meshes, assigning illuminated ad materials
-    this.megaScreenFrontTemplate = this.findMesh(kitResult.meshes, 'Ad_Screen_Billboard_Highway_Mega_Front_Mesh') as Mesh;
-    this.megaScreenBackTemplate = this.findMesh(kitResult.meshes, 'Ad_Screen_Billboard_Highway_Mega_Back_Mesh') as Mesh;
-    this.roadsideScreenFrontTemplate = this.findMesh(kitResult.meshes, 'Ad_Screen_Billboard_Roadside_Dual_Front_Mesh') as Mesh;
-    this.roadsideScreenBackTemplate = this.findMesh(kitResult.meshes, 'Ad_Screen_Billboard_Roadside_Dual_Back_Mesh') as Mesh;
-    this.gantryScreenTemplate = this.findMesh(kitResult.meshes, 'Ad_Screen_Track_Sponsor_Gantry_Mesh') as Mesh;
-    this.barrierScreenTemplate = this.findMesh(kitResult.meshes, 'Ad_Screen_Track_Barrier_Banner_Mesh') as Mesh;
-    this.rooftopScreenTemplate = this.findMesh(kitResult.meshes, 'Ad_Screen_Bldg_Rooftop_Ad_Mesh') as Mesh;
-    this.towerScreenTemplate = this.findMesh(kitResult.meshes, 'Ad_Screen_Bldg_Tower_WallAd_Mesh') as Mesh;
+    // Helper to search nodes and meshes
+    const findNodeOrMesh = (name: string): TransformNode | Mesh | null => {
+      const node = kitNodes.find((t) => t.name.includes(name));
+      if (node) return node;
+      const mesh = kitMeshes.find((m) => m.name.includes(name));
+      return mesh || null;
+    };
+
+    // 3. Extract and cache structural base frames
+    this.gantryStructTemplate = findNodeOrMesh('Track_Sponsor_Gantry_Struct') as Mesh;
+    this.highwayMegaStructTemplate = findNodeOrMesh('Billboard_Highway_Mega_Struct') as Mesh;
+    this.roadsideDualStructTemplate = findNodeOrMesh('Billboard_Roadside_Dual_Struct') as Mesh;
+    this.barrierBannerStructTemplate = findNodeOrMesh('Track_Barrier_Banner_Struct') as Mesh;
+    this.towerStructTemplate = findNodeOrMesh('Bldg_Tower_WallAd_Struct') as TransformNode;
+    this.rooftopStructTemplate = findNodeOrMesh('Bldg_Rooftop_Ad_Struct') as TransformNode;
+    this.fillerMedStructTemplate = findNodeOrMesh('Bldg_Filler_Med_Struct') as TransformNode;
+    this.fillerSmallStructTemplate = findNodeOrMesh('Bldg_Filler_Small_Struct') as TransformNode;
+
+    // 4. Extract and cache screen meshes
+    this.gantryScreenTemplate = findNodeOrMesh('Ad_Screen_Track_Sponsor_Gantry') as Mesh;
+    this.highwayMegaFrontScreenTemplate = findNodeOrMesh('Ad_Screen_Billboard_Highway_Mega_Front') as Mesh;
+    this.highwayMegaBackScreenTemplate = findNodeOrMesh('Ad_Screen_Billboard_Highway_Mega_Back') as Mesh;
+    this.roadsideDualFrontScreenTemplate = findNodeOrMesh('Ad_Screen_Billboard_Roadside_Dual_Front') as Mesh;
+    this.roadsideDualBackScreenTemplate = findNodeOrMesh('Ad_Screen_Billboard_Roadside_Dual_Back') as Mesh;
+    this.barrierBannerScreenTemplate = findNodeOrMesh('Ad_Screen_Track_Barrier_Banner') as Mesh;
+    this.towerScreenTemplate = findNodeOrMesh('Ad_Screen_Bldg_Tower_WallAd') as Mesh;
+    this.rooftopScreenTemplate = findNodeOrMesh('Ad_Screen_Bldg_Rooftop_Ad') as Mesh;
 
     // Apply ad materials to template screens
-    if (this.megaScreenFrontTemplate) this.megaScreenFrontTemplate.material = this.landscapeAdMaterial;
-    if (this.megaScreenBackTemplate) this.megaScreenBackTemplate.material = this.landscapeAdMaterial;
-    if (this.roadsideScreenFrontTemplate) this.roadsideScreenFrontTemplate.material = this.landscapeAdMaterial;
-    if (this.roadsideScreenBackTemplate) this.roadsideScreenBackTemplate.material = this.landscapeAdMaterial;
     if (this.gantryScreenTemplate) this.gantryScreenTemplate.material = this.landscapeAdMaterial;
-    if (this.barrierScreenTemplate) this.barrierScreenTemplate.material = this.landscapeAdMaterial;
+    if (this.highwayMegaFrontScreenTemplate) this.highwayMegaFrontScreenTemplate.material = this.landscapeAdMaterial;
+    if (this.highwayMegaBackScreenTemplate) this.highwayMegaBackScreenTemplate.material = this.landscapeAdMaterial;
+    if (this.roadsideDualFrontScreenTemplate) this.roadsideDualFrontScreenTemplate.material = this.landscapeAdMaterial;
+    if (this.roadsideDualBackScreenTemplate) this.roadsideDualBackScreenTemplate.material = this.landscapeAdMaterial;
+    if (this.barrierBannerScreenTemplate) this.barrierBannerScreenTemplate.material = this.landscapeAdMaterial;
     if (this.rooftopScreenTemplate) this.rooftopScreenTemplate.material = this.landscapeAdMaterial;
     if (this.towerScreenTemplate) this.towerScreenTemplate.material = this.portraitAdMaterial;
 
@@ -133,32 +139,27 @@ export class RoadsideAdManager {
         this.scene
       );
 
-      for (const mesh of bigResult.meshes) {
-        if (!mesh.parent || mesh.parent === this.scene.getMeshByName('__root__')) {
-          mesh.parent = this.templatesRoot;
-        }
-        mesh.isPickable = false;
-        mesh.receiveShadows = true;
+      const bigRoot = bigResult.meshes.find((m) => m.name === '__root__');
+      if (bigRoot) {
+        bigRoot.setEnabled(false);
+        bigRoot.position.set(0, -5000, 0);
       }
 
-      // Locate 3x big ad screen
-      const bigScreen = this.findMesh(bigResult.meshes, 'Ad_Screen_Billboard_Roadside_Dual_Front_Mesh') as Mesh;
-      if (bigScreen) {
-        bigScreen.material = this.landscapeAdMaterial;
-        this.bigAdScreenTemplate = bigScreen;
+      this.bigAdScreenTemplate = bigResult.meshes.find(
+        (m) => m.name.includes('Ad_Screen_Billboard_Roadside_Dual_Front')
+      ) as Mesh;
+      this.bigAdStructTemplate = bigResult.meshes.find(
+        (m) => m.name.includes('Billboard_Roadside_Dual_Struct')
+      ) as Mesh;
+
+      if (this.bigAdScreenTemplate) {
+        this.bigAdScreenTemplate.material = this.landscapeAdMaterial;
       }
     } catch (e) {
-      console.warn('[RoadsideAdManager] Could not load big_ad_screen.glb directly, falling back to scaled roadside template', e);
+      console.warn('[RoadsideAdManager] Could not load big_ad_screen.glb directly, using roadside template', e);
     }
 
     this.isLoaded = true;
-  }
-
-  private findMesh(meshes: AbstractMesh[], nameSubstr: string): AbstractMesh | null {
-    for (const m of meshes) {
-      if (m.name.includes(nameSubstr)) return m;
-    }
-    return null;
   }
 
   private createAdMaterials(): void {
@@ -193,6 +194,57 @@ export class RoadsideAdManager {
     }
   }
 
+  private instantiateStruct(
+    template: TransformNode | Mesh | null,
+    name: string,
+    parent: TransformNode
+  ): TransformNode | Mesh | null {
+    if (!template) return null;
+    const clone = template.clone(name, parent);
+    if (!clone) return null;
+    clone.setEnabled(true);
+    clone.position.set(0, 0, 0);
+    clone.rotation.set(0, 0, 0);
+
+    clone.getChildMeshes().forEach((m) => {
+      m.setEnabled(true);
+      m.isVisible = true;
+      m.isPickable = false;
+      m.receiveShadows = true;
+    });
+
+    if (clone instanceof Mesh) {
+      clone.isVisible = true;
+      clone.isPickable = false;
+      clone.receiveShadows = true;
+    }
+
+    return clone;
+  }
+
+  private instantiateScreen(
+    template: Mesh | null,
+    name: string,
+    pos: Vector3,
+    material: StandardMaterial,
+    parent: TransformNode,
+    scale?: Vector3
+  ): Mesh | null {
+    if (!template) return null;
+    const clone = template.clone(name, parent);
+    if (!clone) return null;
+    clone.setEnabled(true);
+    clone.isVisible = true;
+    clone.isPickable = false;
+    clone.receiveShadows = false;
+    clone.position.copyFrom(pos);
+    if (scale) {
+      clone.scaling.copyFrom(scale);
+    }
+    clone.material = material;
+    return clone;
+  }
+
   // ==========================================
   // SPONSOR GANTRY (Overhead across track)
   // ==========================================
@@ -203,22 +255,16 @@ export class RoadsideAdManager {
     root.parent = parent;
 
     // Structural base frame from unified kit
-    if (this.gantryFrameTemplate) {
-      const frame = (this.gantryFrameTemplate as Mesh).createInstance(`${name}_Frame`);
-      frame.position.set(0, 0, 0);
-      frame.parent = root;
-      frame.isPickable = false;
-      frame.receiveShadows = true;
-    }
+    this.instantiateStruct(this.gantryStructTemplate, `${name}_Frame`, root);
 
     // Separate ad screen attached at 6.6m clearance
-    if (this.gantryScreenTemplate) {
-      const screen = this.gantryScreenTemplate.createInstance(`${name}_Screen`);
-      screen.position.set(0, 6.6, 0.32);
-      screen.parent = root;
-      screen.isPickable = false;
-      screen.receiveShadows = false;
-    }
+    this.instantiateScreen(
+      this.gantryScreenTemplate,
+      `${name}_Screen`,
+      new Vector3(0, 6.6, 0.32),
+      this.landscapeAdMaterial,
+      root
+    );
 
     return root;
   }
@@ -233,26 +279,22 @@ export class RoadsideAdManager {
     root.parent = parent;
 
     // Support frame scaled to fit massive 24m display
-    if (this.roadsideFrameTemplate) {
-      const frame = (this.roadsideFrameTemplate as Mesh).createInstance(`${name}_Frame`);
-      frame.position.set(0, 0, 0);
+    const frameTemplate = this.bigAdStructTemplate || this.roadsideDualStructTemplate;
+    const frame = this.instantiateStruct(frameTemplate, `${name}_Frame`, root);
+    if (frame) {
       frame.scaling.set(2.8, 1.8, 2.0);
-      frame.parent = root;
-      frame.isPickable = false;
-      frame.receiveShadows = true;
     }
 
     // 3x scaled separate ad screen (24m x 11.4m)
-    const screenTemplate = this.bigAdScreenTemplate || this.roadsideScreenFrontTemplate;
-    if (screenTemplate) {
-      const screen = screenTemplate.createInstance(`${name}_Screen`);
-      // Position screen centered on support structure at 10.5m height
-      screen.position.set(0, 10.5, 0.32);
-      screen.scaling.set(3.0, 3.0, 1.0);
-      screen.parent = root;
-      screen.isPickable = false;
-      screen.receiveShadows = false;
-    }
+    const screenTemplate = this.bigAdScreenTemplate || this.roadsideDualFrontScreenTemplate;
+    this.instantiateScreen(
+      screenTemplate,
+      `${name}_Screen`,
+      new Vector3(0, 10.5, 0.32),
+      this.landscapeAdMaterial,
+      root,
+      new Vector3(3.0, 3.0, 1.0)
+    );
 
     return root;
   }
@@ -267,31 +309,25 @@ export class RoadsideAdManager {
     root.parent = parent;
 
     // Base frame from unified kit
-    if (this.roadsideFrameTemplate) {
-      const frame = (this.roadsideFrameTemplate as Mesh).createInstance(`${name}_Frame`);
-      frame.position.set(0, 0, 0);
-      frame.parent = root;
-      frame.isPickable = false;
-      frame.receiveShadows = true;
-    }
+    this.instantiateStruct(this.roadsideDualStructTemplate, `${name}_Frame`, root);
 
     // Separate front ad screen
-    if (this.roadsideScreenFrontTemplate) {
-      const front = this.roadsideScreenFrontTemplate.createInstance(`${name}_ScreenFront`);
-      front.position.set(0, 5.2, 0.32);
-      front.parent = root;
-      front.isPickable = false;
-      front.receiveShadows = false;
-    }
+    this.instantiateScreen(
+      this.roadsideDualFrontScreenTemplate,
+      `${name}_ScreenFront`,
+      new Vector3(0, 5.2, 0.32),
+      this.landscapeAdMaterial,
+      root
+    );
 
     // Separate back ad screen
-    if (this.roadsideScreenBackTemplate) {
-      const back = this.roadsideScreenBackTemplate.createInstance(`${name}_ScreenBack`);
-      back.position.set(0, 5.2, -0.32);
-      back.parent = root;
-      back.isPickable = false;
-      back.receiveShadows = false;
-    }
+    this.instantiateScreen(
+      this.roadsideDualBackScreenTemplate,
+      `${name}_ScreenBack`,
+      new Vector3(0, 5.2, -0.32),
+      this.landscapeAdMaterial,
+      root
+    );
 
     return root;
   }
@@ -306,31 +342,25 @@ export class RoadsideAdManager {
     root.parent = parent;
 
     // Heavy steel frame from unified kit
-    if (this.megaFrameTemplate) {
-      const frame = (this.megaFrameTemplate as Mesh).createInstance(`${name}_Frame`);
-      frame.position.set(0, 0, 0);
-      frame.parent = root;
-      frame.isPickable = false;
-      frame.receiveShadows = true;
-    }
+    this.instantiateStruct(this.highwayMegaStructTemplate, `${name}_Frame`, root);
 
     // Separate front screen
-    if (this.megaScreenFrontTemplate) {
-      const front = this.megaScreenFrontTemplate.createInstance(`${name}_ScreenFront`);
-      front.position.set(0, 11.5, 0.32);
-      front.parent = root;
-      front.isPickable = false;
-      front.receiveShadows = false;
-    }
+    this.instantiateScreen(
+      this.highwayMegaFrontScreenTemplate,
+      `${name}_ScreenFront`,
+      new Vector3(0, 11.5, 0.32),
+      this.landscapeAdMaterial,
+      root
+    );
 
     // Separate back screen
-    if (this.megaScreenBackTemplate) {
-      const back = this.megaScreenBackTemplate.createInstance(`${name}_ScreenBack`);
-      back.position.set(0, 11.5, -0.32);
-      back.parent = root;
-      back.isPickable = false;
-      back.receiveShadows = false;
-    }
+    this.instantiateScreen(
+      this.highwayMegaBackScreenTemplate,
+      `${name}_ScreenBack`,
+      new Vector3(0, 11.5, -0.32),
+      this.landscapeAdMaterial,
+      root
+    );
 
     return root;
   }
@@ -344,21 +374,15 @@ export class RoadsideAdManager {
     root.rotation.y = rotY;
     root.parent = parent;
 
-    if (this.barrierFrameTemplate) {
-      const frame = (this.barrierFrameTemplate as Mesh).createInstance(`${name}_Frame`);
-      frame.position.set(0, 0, 0);
-      frame.parent = root;
-      frame.isPickable = false;
-      frame.receiveShadows = true;
-    }
+    this.instantiateStruct(this.barrierBannerStructTemplate, `${name}_Frame`, root);
 
-    if (this.barrierScreenTemplate) {
-      const screen = this.barrierScreenTemplate.createInstance(`${name}_Screen`);
-      screen.position.set(0, 0.65, 0.14);
-      screen.parent = root;
-      screen.isPickable = false;
-      screen.receiveShadows = false;
-    }
+    this.instantiateScreen(
+      this.barrierBannerScreenTemplate,
+      `${name}_Screen`,
+      new Vector3(0, 0.65, 0.14),
+      this.landscapeAdMaterial,
+      root
+    );
 
     return root;
   }
@@ -372,22 +396,16 @@ export class RoadsideAdManager {
     root.rotation.y = rotY;
     root.parent = parent;
 
-    if (this.towerBodyTemplate) {
-      const body = (this.towerBodyTemplate as Mesh).createInstance(`${name}_Body`);
-      body.position.set(0, 0, 0);
-      body.parent = root;
-      body.isPickable = false;
-      body.receiveShadows = true;
-    }
+    this.instantiateStruct(this.towerStructTemplate, `${name}_Body`, root);
 
     // Separate 4:3 LED ad wall screen
-    if (this.towerScreenTemplate) {
-      const screen = this.towerScreenTemplate.createInstance(`${name}_Screen`);
-      screen.position.set(0, 16.0, 8.25);
-      screen.parent = root;
-      screen.isPickable = false;
-      screen.receiveShadows = false;
-    }
+    this.instantiateScreen(
+      this.towerScreenTemplate,
+      `${name}_Screen`,
+      new Vector3(0, 16.0, 8.25),
+      this.portraitAdMaterial,
+      root
+    );
 
     return root;
   }
@@ -401,21 +419,15 @@ export class RoadsideAdManager {
     root.rotation.y = rotY;
     root.parent = parent;
 
-    if (this.rooftopBodyTemplate) {
-      const body = (this.rooftopBodyTemplate as Mesh).createInstance(`${name}_Body`);
-      body.position.set(0, 0, 0);
-      body.parent = root;
-      body.isPickable = false;
-      body.receiveShadows = true;
-    }
+    this.instantiateStruct(this.rooftopStructTemplate, `${name}_Body`, root);
 
-    if (this.rooftopScreenTemplate) {
-      const screen = this.rooftopScreenTemplate.createInstance(`${name}_Screen`);
-      screen.position.set(0, 21.5, 4.9);
-      screen.parent = root;
-      screen.isPickable = false;
-      screen.receiveShadows = false;
-    }
+    this.instantiateScreen(
+      this.rooftopScreenTemplate,
+      `${name}_Screen`,
+      new Vector3(0, 21.5, 4.9),
+      this.landscapeAdMaterial,
+      root
+    );
 
     return root;
   }
@@ -435,14 +447,8 @@ export class RoadsideAdManager {
     root.rotation.y = rotY;
     root.parent = parent;
 
-    const template = size === 'med' ? this.fillerMedTemplate : this.fillerSmallTemplate;
-    if (template) {
-      const body = (template as Mesh).createInstance(`${name}_Body`);
-      body.position.set(0, 0, 0);
-      body.parent = root;
-      body.isPickable = false;
-      body.receiveShadows = true;
-    }
+    const template = size === 'med' ? this.fillerMedStructTemplate : this.fillerSmallStructTemplate;
+    this.instantiateStruct(template, `${name}_Body`, root);
 
     return root;
   }
