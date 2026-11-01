@@ -44,7 +44,7 @@ export class MultiplayerLobbyUI {
   private selectedVehicleId: string = 'mercedes_slc';
   private selectedPaintId: string = 'deep_blue';
   private playerName: string = 'Driver 1';
-  private hostAddress: string = 'localhost:5050';
+  private hostAddress: string = `${window.location.hostname || 'localhost'}:5050`;
 
   private activeRoomConfig: RoomConfig | null = null;
   private activePlayers: LobbyPlayer[] = [];
@@ -151,7 +151,7 @@ export class MultiplayerLobbyUI {
   private renderEntryView(): void {
     if (!this.container) return;
 
-    const cars = VEHICLE_CATALOG.slice(0, 8); // Top available vehicles
+    const cars = VEHICLE_CATALOG; // Available vehicles
     const selectedCar = VEHICLE_CATALOG.find(c => c.id === this.selectedVehicleId) || VEHICLE_CATALOG[0];
 
     this.container.innerHTML = `

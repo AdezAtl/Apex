@@ -40,7 +40,14 @@ export default defineConfig({
   server: {
     port: 5173,
     open: false,
-    host: true,
+    host: '0.0.0.0', // Exposes Vite dev server to all devices on Wi-Fi / Hotspot
+    proxy: {
+      '/ws': {
+        target: 'ws://127.0.0.1:5050',
+        ws: true,
+        changeOrigin: true,
+      },
+    },
     watch: {
       ignored: ['**/.tmp*/**', '**/dist/**', '**/assets/**', '**/*.7z', '**/*.zip', '**/*.rar'],
     },

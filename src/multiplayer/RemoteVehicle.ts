@@ -1,8 +1,3 @@
-/**
- * Project Apex — RemoteVehicle
- * Renders and smoothly interpolates a remote human or synchronized AI vehicle in Babylon.js.
- */
-
 import {
   Scene,
   Vector3,
@@ -17,7 +12,7 @@ import { RacerSnapshot } from './MultiplayerTypes';
 import { getVehicleById } from '../vehicle/VehicleCatalog';
 
 interface TimedSnapshot {
-  time: number; // local performance.now() when received or snapshot.timestamp
+  time: number;
   snapshot: RacerSnapshot;
 }
 
@@ -43,15 +38,13 @@ export class RemoteVehicle {
   public isFinished: boolean = false;
   public finishTimeSeconds: number = 0;
 
-  // Snapshot Interpolation Buffer
   private snapshotBuffer: TimedSnapshot[] = [];
-  private static readonly INTERPOLATION_DELAY_MS = 100; // 100ms render buffer for smooth LAN motion
+  // Tight 45ms buffer for low-latency LAN responsiveness
+  private static readonly INTERPOLATION_DELAY_MS = 45;
   private static readonly MAX_BUFFER_SIZE = 30;
 
-  // Visual nametag billboard
   private nameplateMesh: Mesh | null = null;
   private nameplateTexture: DynamicTexture | null = null;
-
   private scene: Scene;
 
   constructor(
@@ -72,15 +65,12 @@ export class RemoteVehicle {
     this.vehicle = new Vehicle(this.scene);
   }
 
-  /**
-   * Asynchronously loads the 3D vehicle model and creates the floating nameplate billboard.
-   */
   public async load(initialPos: Vector3, initialYaw: number = 0): Promise<void> {
     this.position.copyFrom(initialPos);
     this.yawAngle = initialYaw;
 
     const catalogItem = getVehicleById(this.vehicleId);
-    const fileName = catalogItem ? catalogItem.fileName : 'APX01.glb';
+    const fileName = catalogItem ? catalogItem.fileName : '3M.glb';
     const yawOffset = catalogItem?.yawOffset || 0;
 
     await this.vehicle.load(fileName, this.position, this.yawAngle, this.paintId, yawOffset);
@@ -89,9 +79,6 @@ export class RemoteVehicle {
     this.createNameplate();
   }
 
-  /**
-   * Adds a new network snapshot into the interpolation queue.
-   */
   public pushSnapshot(snapshot: RacerSnapshot, receiveTime: number = performance.now()): void {
     this.currentLap = snapshot.currentLap;
     this.currentGate = snapshot.currentGate;
@@ -108,26 +95,16 @@ export class RemoteVehicle {
     }
   }
 
-  /**
-   * Per-frame render update: extracts smooth interpolated transform and animates wheels & body.
-   */
   public update(dt: number, currentTime: number = performance.now()): void {
     if (!this.isLoaded || !this.vehicle.rootNode) return;
 
     const renderTime = currentTime - RemoteVehicle.INTERPOLATION_DELAY_MS;
 
-    // Prune stale snapshots older than renderTime - 500ms
     while (this.snapshotBuffer.length > 2 && this.snapshotBuffer[1].time < renderTime) {
       this.snapshotBuffer.shift();
     }
 
-    if (this.snapshotBuffer.length === 0) {
-      // No data yet; remain at current position
-      return;
-    }
-
     if (this.snapshotBuffer.length === 1) {
-      // Only 1 snapshot: clamp directly
       const s = this.snapshotBuffer[0].snapshot;
       this.position.set(s.x, s.y, s.z);
       this.yawAngle = s.yaw;
@@ -135,8 +112,7 @@ export class RemoteVehicle {
       this.lateralSpeed = s.lateralSpeed;
       this.steeringAngle = s.steeringAngle;
       this.wheelSpinAngle = s.wheelSpinAngle;
-    } else {
-      // Find two snapshots surrounding renderTime
+    } else if (this.snapshotBuffer.length >= 2) {
       let s0: TimedSnapshot | null = null;
       let s1: TimedSnapshot | null = null;
 
@@ -149,33 +125,25 @@ export class RemoteVehicle {
       }
 
       if (s0 && s1) {
-        // Interpolate smoothly between s0 and s1
         const span = s1.time - s0.time;
-        const alpha = span > 0.0001 ? (renderTime - s0.time) / span : 0;
-        const clampedAlpha = Math.max(0, Math.min(1, alpha));
-
+        const alpha = span > 0.0001 ? Math.max(0, Math.min(1, (renderTime - s0.time) / span)) : 0;
         const snap0 = s0.snapshot;
         const snap1 = s1.snapshot;
 
-        // Position linear lerp
-        this.position.x = snap0.x + (snap1.x - snap0.x) * clampedAlpha;
-        this.position.y = snap0.y + (snap1.y - snap0.y) * clampedAlpha;
-        this.position.z = snap0.z + (snap1.z - snap0.z) * clampedAlpha;
+        this.position.x = snap0.x + (snap1.x - snap0.x) * alpha;
+        this.position.y = snap0.y + (snap1.y - snap0.y) * alpha;
+        this.position.z = snap0.z + (snap1.z - snap0.z) * alpha;
+        this.yawAngle = this.lerpAngle(snap0.yaw, snap1.yaw, alpha);
 
-        // Yaw angle shortest-arc slerp
-        this.yawAngle = this.lerpAngle(snap0.yaw, snap1.yaw, clampedAlpha);
-
-        this.forwardSpeed = snap0.forwardSpeed + (snap1.forwardSpeed - snap0.forwardSpeed) * clampedAlpha;
-        this.lateralSpeed = snap0.lateralSpeed + (snap1.lateralSpeed - snap0.lateralSpeed) * clampedAlpha;
-        this.steeringAngle = snap0.steeringAngle + (snap1.steeringAngle - snap0.steeringAngle) * clampedAlpha;
-        this.wheelSpinAngle = snap0.wheelSpinAngle + (snap1.wheelSpinAngle - snap0.wheelSpinAngle) * clampedAlpha;
-      } else if (this.snapshotBuffer.length > 0) {
-        // Extrapolation: renderTime is ahead of newest snapshot (short network hiccup)
+        this.forwardSpeed = snap0.forwardSpeed + (snap1.forwardSpeed - snap0.forwardSpeed) * alpha;
+        this.lateralSpeed = snap0.lateralSpeed + (snap1.lateralSpeed - snap0.lateralSpeed) * alpha;
+        this.steeringAngle = snap0.steeringAngle + (snap1.steeringAngle - snap0.steeringAngle) * alpha;
+        this.wheelSpinAngle = snap0.wheelSpinAngle + (snap1.wheelSpinAngle - snap0.wheelSpinAngle) * alpha;
+      } else {
         const latest = this.snapshotBuffer[this.snapshotBuffer.length - 1];
         const snap = latest.snapshot;
-        const elapsedSec = Math.min(0.25, Math.max(0, (renderTime - latest.time) / 1000));
+        const elapsedSec = Math.min(0.15, Math.max(0, (renderTime - latest.time) / 1000));
 
-        // Dead-reckon position along velocity vector
         this.position.x = snap.x + snap.vx * elapsedSec;
         this.position.y = snap.y;
         this.position.z = snap.z + snap.vz * elapsedSec;
@@ -187,23 +155,18 @@ export class RemoteVehicle {
       }
     }
 
-    // Apply transforms to visual 3D mesh
+    // CRITICAL FIX: Always apply transform even if snapshotBuffer is empty (e.g., on Host direct updates)
     this.vehicle.applyTransform(this.position, this.yawAngle);
     this.vehicle.updateWheels(this.wheelSpinAngle, this.steeringAngle);
 
-    // Approximate body tilt from lateral and forward speed changes
     const approxLateralAccel = this.forwardSpeed * Math.tan(this.steeringAngle) * 2.0;
     this.vehicle.updateBodyMotion(dt, 0, approxLateralAccel);
 
-    // Position nametag above the vehicle roof
     if (this.nameplateMesh) {
       this.nameplateMesh.position.set(this.position.x, this.position.y + 1.85, this.position.z);
     }
   }
 
-  /**
-   * Shortest-arc angular interpolation preventing 360-degree flip wraps.
-   */
   private lerpAngle(a: number, b: number, t: number): number {
     let diff = (b - a) % (Math.PI * 2);
     if (diff > Math.PI) diff -= Math.PI * 2;
@@ -212,9 +175,7 @@ export class RemoteVehicle {
   }
 
   private createNameplate(): void {
-    if (this.nameplateMesh) {
-      this.nameplateMesh.dispose();
-    }
+    if (this.nameplateMesh) this.nameplateMesh.dispose();
 
     const texWidth = 256;
     const texHeight = 64;
@@ -224,8 +185,6 @@ export class RemoteVehicle {
     const ctx = this.nameplateTexture.getContext() as CanvasRenderingContext2D;
     if (ctx) {
       ctx.clearRect(0, 0, texWidth, texHeight);
-
-      // Background rounded pill
       ctx.fillStyle = 'rgba(10, 15, 24, 0.85)';
       ctx.strokeStyle = this.isHost ? 'rgba(235, 175, 40, 0.95)' : 'rgba(0, 215, 255, 0.9)';
       ctx.lineWidth = 3;
@@ -245,7 +204,6 @@ export class RemoteVehicle {
       ctx.fill();
       ctx.stroke();
 
-      // Text label
       ctx.font = 'bold 22px Orbitron, Rajdhani, sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
@@ -270,9 +228,7 @@ export class RemoteVehicle {
   }
 
   public dispose(): void {
-    if (this.vehicle) {
-      this.vehicle.dispose();
-    }
+    if (this.vehicle) this.vehicle.dispose();
     if (this.nameplateMesh) {
       this.nameplateMesh.dispose();
       this.nameplateMesh = null;

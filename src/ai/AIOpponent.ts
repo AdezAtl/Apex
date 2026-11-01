@@ -386,13 +386,13 @@ export class AIOpponent {
     const targetTopSpeed = this.profile.maxForwardSpeed * this.tuning.topSpeedMult * (this.driverPace || 1.0);
 
     // Corner speed scaled by vehicle mechanical grip and aerodynamic downforce
-    const gripRatio = this.profile.normalLateralGrip / 13.0;
+    const gripRatio = this.profile.normalLateralGrip / 12.0;
     const speedRatio = Math.min(1.0, this.forwardSpeed / Math.max(10.0, this.profile.maxForwardSpeed));
     const aeroFactor = 1.0 + (this.profile.downforceRating / 100) * 0.22 * Math.pow(speedRatio, 2);
 
     let desiredSpeed = target.targetSpeed * gripRatio * aeroFactor * this.tuning.cornerSpeedMult * (this.driverPace || 1.0) * this.personality.cornerEntrySpeedFactor;
     // On straights, let targetTopSpeed govern
-    if (target.curvatureDeg < 10) {
+    if (target.curvatureDeg < 14) {
       desiredSpeed = targetTopSpeed;
     }
     if (this.isRecovering) {

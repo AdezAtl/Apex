@@ -1,9 +1,3 @@
-/**
- * Project Apex — MultiplayerManager
- * Master coordinator for LAN multiplayer races, synchronizing vehicle states,
- * authoritative host physics, collisions, checkpoints, and UI transitions.
- */
-
 import { Scene, Vector3 } from '@babylonjs/core';
 import { NetworkClient } from './NetworkClient';
 import { RemoteVehicle } from './RemoteVehicle';
@@ -21,9 +15,11 @@ import { VehicleController } from '../vehicle/VehicleController';
 import { VehicleCollision } from '../physics/VehicleCollision';
 import { CircuitDefinition } from '../tracks/TrackConfig';
 import { ForestValleyCircuit } from '../tracks/ForestValleyCircuit';
-import { AzureCoastCircuit } from '../tracks/AzureCoastCircuit';
+import { getCircuitById } from '../tracks/TrackRegistry';
 import { InputState } from '../input/InputManager';
 import { CheckpointData } from '../checkpoints/CheckpointManager';
+import { AIOpponent } from '../ai/AIOpponent';
+import { WaypointManager } from '../ai/WaypointManager';
 
 export interface MultiplayerManagerCallbacks {
   onStartRaceCountdown: (circuit: CircuitDefinition, mode: RaceMode, lapCount: number) => Promise<void>;
@@ -55,21 +51,20 @@ export class MultiplayerManager {
   public activeRoomConfig: RoomConfig | null = null;
   public activeCircuit: CircuitDefinition = ForestValleyCircuit;
 
-  // Remote vehicles for other connected human players
+  // Remote vehicles (both remote human players AND client-side rendered AI)
   public remoteVehicles: Map<string, RemoteVehicle> = new Map();
+  // Host-only simulated AI instances for empty LAN grid slots
+  private hostAiOpponents: Map<string, AIOpponent> = new Map();
+  private hostWaypointManager: WaypointManager = new WaypointManager();
 
-  // Connected players metadata
   public connectedPlayers: LobbyPlayer[] = [];
   public gridAssignments: Record<string, number> = {};
 
-  // Host-Authoritative State
   private playerProgress: Map<string, PlayerProgress> = new Map();
   private hostRaceTimeSeconds: number = 0;
   private networkTickTimer: number = 0;
   private currentNetworkTick: number = 0;
   private clientInputSeq: number = 0;
-
-  // Checkpoints for active track
   private activeCheckpoints: CheckpointData[] = [];
 
   constructor(scene: Scene, callbacks: MultiplayerManagerCallbacks) {
@@ -108,10 +103,6 @@ export class MultiplayerManager {
     this.isActive = false;
   }
 
-  // ----------------------------------------------------
-  // Network Event Handlers
-  // ----------------------------------------------------
-
   private bindNetworkEvents(): void {
     this.client.on('stateChanged', (state, error) => {
       if (state === 'error') {
@@ -147,30 +138,28 @@ export class MultiplayerManager {
 
     this.client.on('raceStarting', async (data) => {
       this.gridAssignments = data.gridAssignments;
-      this.activeCircuit = data.trackId === 'azure_coast' ? AzureCoastCircuit : ForestValleyCircuit;
+      this.activeCircuit = getCircuitById(data.trackId);
       this.activeCheckpoints = [...this.activeCircuit.checkpoints];
+      this.hostWaypointManager.setCircuit(this.activeCircuit);
 
       this.lobbyUI.hide();
 
-      // Launch race in parent Game engine
       await this.callbacks.onStartRaceCountdown(this.activeCircuit, data.raceMode, data.lapCount);
 
-      // Spawn remote vehicles for all other human players
-      await this.spawnRemoteVehicles(data.gridAssignments);
+      await this.spawnRemoteVehicles(data.gridAssignments, data.aiRacers || []);
 
-      // Initialize host progress trackers if hosting
       if (this.isHost) {
-        this.initHostTrackers(data.gridAssignments);
+        this.initHostTrackers(data.gridAssignments, data.aiRacers || []);
       }
     });
 
     this.client.on('worldSnapshot', (snapshot) => {
-      // Ingest host authoritative updates on client
+      const now = performance.now();
       for (const [id, snap] of Object.entries(snapshot.racers)) {
         if (id !== this.selfPlayerId) {
           const remote = this.remoteVehicles.get(id);
           if (remote) {
-            remote.pushSnapshot(snap);
+            remote.pushSnapshot(snap, now);
           }
         }
       }
@@ -178,17 +167,28 @@ export class MultiplayerManager {
 
     this.client.on('clientInputReceived', (msg) => {
       if (!this.isHost) return;
-      // In host authoritative simulation: feed client input or update their position
       const remote = this.remoteVehicles.get(msg.playerId);
       if (remote && msg.predicted) {
-        // Validating predicted position against track limits
         const pred = msg.predicted;
-        remote.position.set(pred.x, pred.y, pred.z);
-        remote.yawAngle = pred.yaw;
-        remote.forwardSpeed = pred.forwardSpeed;
-        remote.lateralSpeed = pred.lateralSpeed;
-        remote.steeringAngle = pred.steeringAngle;
-        remote.wheelSpinAngle = pred.wheelSpinAngle;
+        const prog = this.playerProgress.get(msg.playerId);
+        // Push into RemoteVehicle's interpolation buffer so Host smoothly renders Client cars!
+        remote.pushSnapshot({
+          id: msg.playerId,
+          x: pred.x,
+          y: pred.y,
+          z: pred.z,
+          yaw: pred.yaw,
+          vx: Math.sin(pred.yaw) * pred.forwardSpeed,
+          vz: Math.cos(pred.yaw) * pred.forwardSpeed,
+          forwardSpeed: pred.forwardSpeed,
+          lateralSpeed: pred.lateralSpeed,
+          steeringAngle: pred.steeringAngle,
+          wheelSpinAngle: pred.wheelSpinAngle,
+          currentLap: (prog?.lapCount || 0) + 1,
+          currentGate: prog?.currentGate || 0,
+          isFinished: prog?.isFinished || false,
+          finishTimeSeconds: prog?.finishTimeSeconds || 0,
+        }, performance.now());
       }
     });
 
@@ -203,6 +203,7 @@ export class MultiplayerManager {
         remote.dispose();
         this.remoteVehicles.delete(playerId);
       }
+      this.playerProgress.delete(playerId);
       this.lobbyUI.setStatus(`${playerName} disconnected.`, 'info');
     });
 
@@ -217,10 +218,6 @@ export class MultiplayerManager {
       this.lobbyUI.setStatus(err, 'error');
     });
   }
-
-  // ----------------------------------------------------
-  // Lobby Actions
-  // ----------------------------------------------------
 
   private async handleHostRoom(
     roomConfig: Partial<RoomConfig>,
@@ -282,12 +279,7 @@ export class MultiplayerManager {
     this.callbacks.onReturnToMainMenu();
   }
 
-  // ----------------------------------------------------
-  // Race Lifecycle & Vehicle Spawning
-  // ----------------------------------------------------
-
   public getGridSlotTransform(slot: number): { position: Vector3; yaw: number } {
-    // Staggered grid slots on the broad 13m road
     switch (slot) {
       case 1:
         return { position: new Vector3(-2.8, 0.05, 14.0), yaw: 0 };
@@ -301,13 +293,13 @@ export class MultiplayerManager {
     }
   }
 
-  private async spawnRemoteVehicles(gridAssignments: Record<string, number>): Promise<void> {
-    // Clean up existing remote vehicles
-    for (const [_, v] of this.remoteVehicles) {
-      v.dispose();
-    }
-    this.remoteVehicles.clear();
+  private async spawnRemoteVehicles(
+    gridAssignments: Record<string, number>,
+    aiRacers: Array<{ id: string; name: string; vehicleId: string; vehicleName: string; paintId: string; gridSlot: number }>
+  ): Promise<void> {
+    this.cleanupRace();
 
+    // 1. Spawn remote human vehicles
     for (const player of this.connectedPlayers) {
       if (player.id === this.selfPlayerId) continue;
 
@@ -326,9 +318,45 @@ export class MultiplayerManager {
       this.remoteVehicles.set(player.id, remote);
       await remote.load(tf.position, tf.yaw);
     }
+
+    // 2. Spawn AI vehicles if fillWithAI is enabled
+    for (const ai of aiRacers) {
+      const tf = this.getGridSlotTransform(ai.gridSlot);
+      if (this.isHost) {
+        // Host simulates the AI physics and broadcasts them in WORLD_SNAPSHOT
+        const aiOpp = new AIOpponent(this.scene, {
+          id: ai.id,
+          name: ai.name,
+          paintId: ai.paintId,
+          gridSlot: ai.gridSlot,
+          gridPosition: tf.position,
+          gridYaw: tf.yaw,
+          difficulty: 'pro',
+          vehicleId: ai.vehicleId,
+        });
+        await aiOpp.load();
+        aiOpp.resetToGrid();
+        this.hostAiOpponents.set(ai.id, aiOpp);
+      } else {
+        // Clients render AI as interpolated RemoteVehicles driven by Host snapshots
+        const remoteAi = new RemoteVehicle(
+          this.scene,
+          ai.id,
+          ai.name,
+          ai.vehicleId,
+          ai.paintId,
+          false
+        );
+        this.remoteVehicles.set(ai.id, remoteAi);
+        await remoteAi.load(tf.position, tf.yaw);
+      }
+    }
   }
 
-  private initHostTrackers(gridAssignments: Record<string, number>): void {
+  private initHostTrackers(
+    gridAssignments: Record<string, number>,
+    aiRacers: Array<{ id: string; name: string; vehicleId: string; vehicleName: string; paintId: string; gridSlot: number }>
+  ): void {
     this.playerProgress.clear();
     this.hostRaceTimeSeconds = 0;
 
@@ -344,19 +372,48 @@ export class MultiplayerManager {
         currentPosition: tf.position.clone(),
       });
     }
+
+    for (const ai of aiRacers) {
+      const tf = this.getGridSlotTransform(ai.gridSlot);
+      this.playerProgress.set(ai.id, {
+        currentGate: 0,
+        lapCount: 0,
+        isFinished: false,
+        finishTimeSeconds: 0,
+        prevPosition: tf.position.clone(),
+        currentPosition: tf.position.clone(),
+      });
+    }
   }
 
-  // ----------------------------------------------------
-  // Frame Update Loop
-  // ----------------------------------------------------
-
-  public update(dt: number, localController: VehicleController | null, inputState: InputState): void {
+  public update(
+    dt: number,
+    localController: VehicleController | null,
+    inputState: InputState,
+    isRacing: boolean = true
+  ): void {
     if (!this.isActive || !localController) return;
 
-    // Update remote vehicle visual meshes and interpolation buffers
     const now = performance.now();
     for (const [_, rv] of this.remoteVehicles) {
       rv.update(dt, now);
+    }
+
+    // Update Host-controlled AI bots during active racing
+    if (this.isHost) {
+      const allCarPositions: { position: Vector3; forwardSpeed: number }[] = [
+        { position: localController.position, forwardSpeed: localController.forwardSpeed },
+      ];
+      for (const [_, rv] of this.remoteVehicles) {
+        allCarPositions.push({ position: rv.position, forwardSpeed: rv.forwardSpeed });
+      }
+      for (const [_, ai] of this.hostAiOpponents) {
+        if (isRacing) {
+          ai.update(dt, this.hostWaypointManager, allCarPositions);
+        } else {
+          ai.updateVisuals(dt);
+        }
+      }
     }
 
     this.networkTickTimer += dt;
@@ -367,7 +424,7 @@ export class MultiplayerManager {
       this.currentNetworkTick++;
 
       if (this.isHost) {
-        this.updateHostNetworkTick(dt, localController);
+        this.updateHostNetworkTick(tickInterval, localController, isRacing);
       } else {
         this.updateClientNetworkTick(localController, inputState);
       }
@@ -388,10 +445,12 @@ export class MultiplayerManager {
     });
   }
 
-  private updateHostNetworkTick(dt: number, localController: VehicleController): void {
-    this.hostRaceTimeSeconds += dt;
+  private updateHostNetworkTick(tickDt: number, localController: VehicleController, isRacing: boolean): void {
+    if (isRacing) {
+      this.hostRaceTimeSeconds += tickDt;
+    }
 
-    // 1. Solve solid-body collisions between Local Host Player and all Remote Players
+    // 1. Solid-body collisions between Host Player and Remote Human Players
     for (const [_, rv] of this.remoteVehicles) {
       if (!rv.isLoaded) continue;
 
@@ -422,24 +481,32 @@ export class MultiplayerManager {
       }
     }
 
-    // 2. Update Checkpoints & Lap Progress authoritatively for Host
-    const hostProg = this.playerProgress.get(this.selfPlayerId);
-    if (hostProg && !hostProg.isFinished) {
-      this.checkRacerGates(this.selfPlayerId, hostProg, localController.position);
-    }
+    // 2. Update Checkpoints & Lap Progress
+    if (isRacing) {
+      const hostProg = this.playerProgress.get(this.selfPlayerId);
+      if (hostProg && !hostProg.isFinished) {
+        this.checkRacerGates(this.selfPlayerId, hostProg, localController.position);
+      }
 
-    // 3. Update Checkpoints & Lap Progress authoritatively for all Remote Players
-    for (const [id, rv] of this.remoteVehicles) {
-      const prog = this.playerProgress.get(id);
-      if (prog && !prog.isFinished) {
-        this.checkRacerGates(id, prog, rv.position);
+      for (const [id, rv] of this.remoteVehicles) {
+        const prog = this.playerProgress.get(id);
+        if (prog && !prog.isFinished) {
+          this.checkRacerGates(id, prog, rv.position);
+        }
+      }
+
+      for (const [id, ai] of this.hostAiOpponents) {
+        const prog = this.playerProgress.get(id);
+        if (prog && !prog.isFinished) {
+          this.checkRacerGates(id, prog, ai.position);
+          if (prog.isFinished) ai.isFinished = true;
+        }
       }
     }
 
-    // 4. Compile authoritative World Snapshot
+    // 3. Compile authoritative World Snapshot (Humans + AI)
     const racers: Record<string, RacerSnapshot> = {};
 
-    // Local host racer
     const hProg = this.playerProgress.get(this.selfPlayerId);
     racers[this.selfPlayerId] = {
       id: this.selfPlayerId,
@@ -459,7 +526,6 @@ export class MultiplayerManager {
       finishTimeSeconds: hProg?.finishTimeSeconds || 0,
     };
 
-    // Remote racers
     for (const [id, rv] of this.remoteVehicles) {
       const rProg = this.playerProgress.get(id);
       racers[id] = {
@@ -481,18 +547,39 @@ export class MultiplayerManager {
       };
     }
 
-    // Broadcast snapshot down to clients
+    for (const [id, ai] of this.hostAiOpponents) {
+      const aProg = this.playerProgress.get(id);
+      racers[id] = {
+        id,
+        x: ai.position.x,
+        y: ai.position.y,
+        z: ai.position.z,
+        yaw: ai.yawAngle,
+        vx: Math.sin(ai.yawAngle) * ai.forwardSpeed,
+        vz: Math.cos(ai.yawAngle) * ai.forwardSpeed,
+        forwardSpeed: ai.forwardSpeed,
+        lateralSpeed: ai.lateralSpeed,
+        steeringAngle: ai.steeringAngle,
+        wheelSpinAngle: ai.wheelSpinAngle,
+        currentLap: (aProg?.lapCount || 0) + 1,
+        currentGate: aProg?.currentGate || 0,
+        isFinished: aProg?.isFinished || false,
+        finishTimeSeconds: aProg?.finishTimeSeconds || 0,
+      };
+    }
+
     this.client.sendHostWorldSnapshot({
       type: 'WORLD_SNAPSHOT',
       tick: this.currentNetworkTick,
       timestamp: performance.now(),
       racers,
-      raceState: 'racing',
+      raceState: isRacing ? 'racing' : 'countdown',
     });
 
-    // 5. Check if all racers finished
-    const allFinished = Array.from(this.playerProgress.values()).every(p => p.isFinished);
-    if (allFinished && this.playerProgress.size > 0) {
+    // 4. Finish race when all human players have finished
+    const humanIds = this.connectedPlayers.map(p => p.id);
+    const allHumansFinished = humanIds.length > 0 && humanIds.every(id => this.playerProgress.get(id)?.isFinished);
+    if (allHumansFinished) {
       this.finalizeRaceResults();
     }
   }
@@ -506,7 +593,6 @@ export class MultiplayerManager {
     const nextGateIdx = (prog.currentGate + 1) % this.activeCheckpoints.length;
     const targetCP = this.activeCheckpoints[nextGateIdx];
 
-    // Gate crossing test
     const perp = new Vector3(-targetCP.direction.z, 0, targetCP.direction.x);
     const toCar = currentPos.subtract(targetCP.position);
     toCar.y = 0;
@@ -514,16 +600,13 @@ export class MultiplayerManager {
     const lateralDist = Math.abs(Vector3.Dot(toCar, perp));
     const forwardDist = Vector3.Dot(toCar, targetCP.direction);
 
-    // If car passed through gate plane
-    if (lateralDist <= targetCP.width * 0.55 && forwardDist >= -1.0 && forwardDist <= 4.0) {
+    if (lateralDist <= targetCP.width * 0.65 && forwardDist >= -2.5 && forwardDist <= 5.5) {
       prog.currentGate = nextGateIdx;
 
-      // In sprint mode: checkpoint 4 is the finish line
       if (this.activeRoomConfig?.raceMode === 'sprint' && targetCP.id === 'CP_4_CAROUSEL_SHOOT') {
         prog.isFinished = true;
         prog.finishTimeSeconds = this.hostRaceTimeSeconds;
       } else if (nextGateIdx === 0) {
-        // Crossed Start/Finish
         prog.lapCount++;
         const targetLaps = this.activeRoomConfig?.lapCount || 1;
         if (prog.lapCount >= targetLaps) {
@@ -537,13 +620,10 @@ export class MultiplayerManager {
   private finalizeRaceResults(): void {
     const results: MultiplayerRacerResult[] = [];
 
-    // Sort by: Finished first (by finish time), then by lap count, then by gate count
     const sorted = Array.from(this.playerProgress.entries()).sort((a, b) => {
       const pA = a[1];
       const pB = b[1];
-      if (pA.isFinished && pB.isFinished) {
-        return pA.finishTimeSeconds - pB.finishTimeSeconds;
-      }
+      if (pA.isFinished && pB.isFinished) return pA.finishTimeSeconds - pB.finishTimeSeconds;
       if (pA.isFinished) return -1;
       if (pB.isFinished) return 1;
       if (pA.lapCount !== pB.lapCount) return pB.lapCount - pA.lapCount;
@@ -554,18 +634,19 @@ export class MultiplayerManager {
 
     sorted.forEach(([id, prog], idx) => {
       const playerMeta = this.connectedPlayers.find(p => p.id === id);
+      const aiMeta = this.hostAiOpponents.get(id);
       const isWinner = idx === 0;
-      const gapSeconds = prog.finishTimeSeconds - winnerTime;
+      const gapSeconds = prog.isFinished ? prog.finishTimeSeconds - winnerTime : 0;
 
       results.push({
         rank: idx + 1,
         id,
-        name: playerMeta ? playerMeta.name : `Driver ${idx + 1}`,
-        vehicleName: playerMeta ? playerMeta.vehicleName : 'APX-01 COUPE',
-        isHuman: true,
+        name: playerMeta ? playerMeta.name : aiMeta ? aiMeta.name : `Driver ${idx + 1}`,
+        vehicleName: playerMeta ? playerMeta.vehicleName : aiMeta ? aiMeta.profile.name : 'APX-01 COUPE',
+        isHuman: Boolean(playerMeta),
         finishTimeSeconds: prog.finishTimeSeconds,
-        finishTimeFormatted: this.formatTime(prog.finishTimeSeconds),
-        gapFormatted: isWinner ? 'LEADER' : `+${gapSeconds.toFixed(2)}s`,
+        finishTimeFormatted: prog.isFinished ? this.formatTime(prog.finishTimeSeconds) : '--:--.--',
+        gapFormatted: isWinner ? 'LEADER' : prog.isFinished ? `+${gapSeconds.toFixed(2)}s` : 'DNF',
         status: prog.isFinished ? 'Finished' : 'DNF',
       });
     });
@@ -579,8 +660,7 @@ export class MultiplayerManager {
     if (!seconds || seconds <= 0) return '00:00.00';
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
-    const totalCenti = Math.floor(seconds * 100);
-    const cs = totalCenti % 100;
+    const cs = Math.floor((seconds * 100) % 100);
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${cs.toString().padStart(2, '0')}`;
   }
 
@@ -597,6 +677,10 @@ export class MultiplayerManager {
       v.dispose();
     }
     this.remoteVehicles.clear();
+    for (const [_, ai] of this.hostAiOpponents) {
+      ai.dispose();
+    }
+    this.hostAiOpponents.clear();
     this.playerProgress.clear();
     this.hostRaceTimeSeconds = 0;
   }
