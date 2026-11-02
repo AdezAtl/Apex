@@ -1,6 +1,9 @@
 import { VehicleTelemetry } from '../vehicle/VehicleController';
 import { RaceMode } from '../events/EventConfig';
 import { DriftTelemetry } from '../drift/DriftScoringManager';
+import { EliminationTelemetry } from '../events/EliminationManager';
+import { PursuitTelemetry } from '../events/PursuitManager';
+import { SpeedTrapTelemetry } from '../events/SpeedTrapManager';
 
 export interface HUDState {
   telemetry: VehicleTelemetry;
@@ -11,6 +14,9 @@ export interface HUDState {
   mode?: RaceMode;
   countdownText?: string;
   driftTelemetry?: DriftTelemetry;
+  eliminationTelemetry?: EliminationTelemetry;
+  pursuitTelemetry?: PursuitTelemetry;
+  speedTrapTelemetry?: SpeedTrapTelemetry;
   positionRank?: string;
   positionTotal?: string;
   showPosition?: boolean;
@@ -41,6 +47,13 @@ export class RacingHUD {
   private driftMultiplierBadge: HTMLElement | null = null;
   private driftFeedbackBanner: HTMLElement | null = null;
 
+  // Nitro & Slipstream Drafting elements
+  private nitroCluster: HTMLElement | null = null;
+  private nitroBarFill: HTMLElement | null = null;
+  private nitroValueElement: HTMLElement | null = null;
+  private draftingBadgeElement: HTMLElement | null = null;
+  private nitroBadgeElement: HTMLElement | null = null;
+
   constructor() {
     this.speedElement = document.getElementById('speed-value');
     this.gearElement = document.getElementById('gear-indicator');
@@ -64,6 +77,12 @@ export class RacingHUD {
     this.driftActivePointsElement = document.getElementById('drift-active-points');
     this.driftMultiplierBadge = document.getElementById('drift-multiplier');
     this.driftFeedbackBanner = document.getElementById('drift-feedback-banner');
+
+    this.nitroCluster = document.getElementById('nitro-cluster');
+    this.nitroBarFill = document.getElementById('nitro-bar-fill');
+    this.nitroValueElement = document.getElementById('nitro-value');
+    this.draftingBadgeElement = document.getElementById('drafting-badge');
+    this.nitroBadgeElement = document.getElementById('nitro-badge');
   }
 
   public setVisible(visible: boolean): void {
@@ -71,6 +90,7 @@ export class RacingHUD {
     if (this.hudContainer) this.hudContainer.style.display = displayStyle;
     if (this.timerCluster) this.timerCluster.style.display = displayStyle;
     if (this.debugOverlay) this.debugOverlay.style.display = displayStyle;
+    if (this.nitroCluster) this.nitroCluster.style.display = displayStyle;
   }
 
   public reset(mode: RaceMode = 'time_trial'): void {
@@ -78,6 +98,13 @@ export class RacingHUD {
     if (this.gearElement) this.gearElement.textContent = 'N';
     if (this.driftBadgeElement) this.driftBadgeElement.classList.add('hidden');
     if (this.handbrakeBadgeElement) this.handbrakeBadgeElement.classList.add('hidden');
+    if (this.draftingBadgeElement) this.draftingBadgeElement.classList.add('hidden');
+    if (this.nitroBadgeElement) this.nitroBadgeElement.classList.add('hidden');
+    if (this.nitroBarFill) {
+      this.nitroBarFill.style.width = '100%';
+      this.nitroBarFill.classList.remove('boosting');
+    }
+    if (this.nitroValueElement) this.nitroValueElement.textContent = '100%';
     if (this.slipElement) this.slipElement.textContent = 'SLIP: 0.0°';
 
     if (this.checkpointHUDElement) {
@@ -183,6 +210,36 @@ export class RacingHUD {
       }
     }
 
+    // Nitro boost & Slipstream drafting indicators
+    if (this.draftingBadgeElement) {
+      if (telemetry.isDrafting) {
+        this.draftingBadgeElement.classList.remove('hidden');
+      } else {
+        this.draftingBadgeElement.classList.add('hidden');
+      }
+    }
+
+    if (this.nitroBadgeElement) {
+      if (telemetry.isBoosting) {
+        this.nitroBadgeElement.classList.remove('hidden');
+      } else {
+        this.nitroBadgeElement.classList.add('hidden');
+      }
+    }
+
+    const nitroVal = Math.max(0, Math.min(100, telemetry.nitro !== undefined ? telemetry.nitro : 100));
+    if (this.nitroBarFill) {
+      this.nitroBarFill.style.width = `${nitroVal}%`;
+      if (telemetry.isBoosting) {
+        this.nitroBarFill.classList.add('boosting');
+      } else {
+        this.nitroBarFill.classList.remove('boosting');
+      }
+    }
+    if (this.nitroValueElement) {
+      this.nitroValueElement.textContent = `${nitroVal}%`;
+    }
+
     // Live slip angle readout
     if (this.slipElement) {
       this.slipElement.textContent = `SLIP: ${telemetry.slipAngleDeg.toFixed(1)}°`;
@@ -194,21 +251,57 @@ export class RacingHUD {
         this.checkpointHUDElement.textContent = 'DRIFT CHALLENGE // 90S FREESTYLE';
       } else if (mode === 'sprint') {
         this.checkpointHUDElement.textContent = `SPRINT • SECTOR ${currentGate}/${totalGates}`;
+      } else if (mode === 'elimination') {
+        const round = state.eliminationTelemetry ? state.eliminationTelemetry.activeRound : 1;
+        this.checkpointHUDElement.textContent = `ELIMINATION // ROUND ${round} OF 3`;
+      } else if (mode === 'pursuit') {
+        this.checkpointHUDElement.textContent = 'POLICE PURSUIT // EVADE PATROL';
+      } else if (mode === 'speed_trap') {
+        const traps = state.speedTrapTelemetry
+          ? `${state.speedTrapTelemetry.trapsCompleted}/${state.speedTrapTelemetry.totalTraps}`
+          : '0/3';
+        this.checkpointHUDElement.textContent = `SPEED TRAP // RADAR ${traps}`;
       } else {
         this.checkpointHUDElement.textContent = `LAP ${lap} • SECTOR ${currentGate}/${totalGates}`;
       }
     }
 
-    // Race Timer & Drift Time Remaining
+    // Race Timer & Mode Specific Readouts
     if (this.raceTimerElement) {
       if (mode === 'drift' && driftTelemetry) {
+        if (this.timerLabelElement) this.timerLabelElement.textContent = 'TIME REMAINING';
         this.raceTimerElement.textContent = this.formatTime(driftTelemetry.timeRemainingSec);
         if (driftTelemetry.timeRemainingSec < 15.0) {
           this.raceTimerElement.style.color = 'var(--accent-amber)';
         } else {
           this.raceTimerElement.style.color = '#ffffff';
         }
+      } else if (mode === 'elimination' && state.eliminationTelemetry) {
+        if (this.timerLabelElement) this.timerLabelElement.textContent = 'KNOCKOUT IN';
+        this.raceTimerElement.textContent = this.formatTime(state.eliminationTelemetry.roundTimeRemaining);
+        if (state.eliminationTelemetry.roundTimeRemaining <= 5.0) {
+          this.raceTimerElement.style.color = 'var(--accent-red)';
+        } else if (state.eliminationTelemetry.roundTimeRemaining <= 10.0) {
+          this.raceTimerElement.style.color = 'var(--accent-amber)';
+        } else {
+          this.raceTimerElement.style.color = '#ffffff';
+        }
+      } else if (mode === 'pursuit' && state.pursuitTelemetry) {
+        if (this.timerLabelElement) this.timerLabelElement.textContent = 'PATROL DISTANCE';
+        this.raceTimerElement.textContent = `${state.pursuitTelemetry.distanceToCopMeters}M`;
+        if (state.pursuitTelemetry.distanceToCopMeters < 10) {
+          this.raceTimerElement.style.color = 'var(--accent-red)';
+        } else if (state.pursuitTelemetry.distanceToCopMeters > 60) {
+          this.raceTimerElement.style.color = 'var(--accent-teal)';
+        } else {
+          this.raceTimerElement.style.color = '#ffffff';
+        }
+      } else if (mode === 'speed_trap' && state.speedTrapTelemetry) {
+        if (this.timerLabelElement) this.timerLabelElement.textContent = 'TOTAL VELOCITY';
+        this.raceTimerElement.textContent = `${state.speedTrapTelemetry.aggregateSpeedKmh} KM/H`;
+        this.raceTimerElement.style.color = '#38bdf8';
       } else {
+        if (this.timerLabelElement) this.timerLabelElement.textContent = 'LAP TIME';
         this.raceTimerElement.textContent = this.formatTime(raceTimeSeconds);
         this.raceTimerElement.style.color = '#ffffff';
       }
@@ -250,10 +343,16 @@ export class RacingHUD {
       if (this.driftScoreCluster) this.driftScoreCluster.classList.add('hidden');
     }
 
-    // Countdown / status banner
+    // Countdown / status banner (includes elimination, pursuit, and speed trap messages)
+    const bannerMsg =
+      countdownText ||
+      state.eliminationTelemetry?.bannerMessage ||
+      state.pursuitTelemetry?.bannerMessage ||
+      state.speedTrapTelemetry?.bannerMessage;
+
     if (this.countdownElement) {
-      if (countdownText) {
-        this.countdownElement.textContent = countdownText;
+      if (bannerMsg) {
+        this.countdownElement.textContent = bannerMsg;
         this.countdownElement.classList.remove('hidden');
       } else {
         this.countdownElement.classList.add('hidden');

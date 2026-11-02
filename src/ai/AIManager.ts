@@ -133,8 +133,8 @@ export class AIManager {
 
     this.isRacing = false;
 
-    // DRIFT MODE IS SOLO FREESTYLE: Disable and hide AI
-    if (event.mode === 'drift') {
+    // DRIFT & POLICE PURSUIT MODES: Disable standard AI grid
+    if (event.mode === 'drift' || event.mode === 'pursuit') {
       this.isEnabled = false;
       this.hideOpponents();
       return;

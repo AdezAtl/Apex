@@ -38,6 +38,7 @@ export class CheckpointManager {
 
   public onLapCompleted?: (lap: number) => void;
   public onSprintCompleted?: () => void;
+  public onCheckpointCrossed?: (cp: CheckpointData) => void;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -347,6 +348,9 @@ export class CheckpointManager {
       // Within gate crossing width
       if (lateralDist <= targetCP.width * 0.55) {
         this.lastCrossedCheckpoint = targetCP;
+        if (this.onCheckpointCrossed) {
+          this.onCheckpointCrossed(targetCP);
+        }
 
         if (this.activeEvent.mode === 'drift') {
           // Drift mode: loop around the circuit seamlessly without lap limits

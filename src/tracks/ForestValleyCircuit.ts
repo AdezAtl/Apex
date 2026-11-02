@@ -12,7 +12,6 @@ import {
 import { CircuitDefinition } from './TrackConfig';
 import { RaceEventConfig } from '../events/EventConfig';
 import { RoadSamplePoint } from '../environment/RoadMeshBuilder';
-import { RoadsideAdManager } from '../environment/RoadsideAdManager';
 
 // 294 discrete road sample points along the 980.0m continuous motorsport circuit (13.0m wide)
 const forestValleyRoadSamples: RoadSamplePoint[] = [
@@ -424,6 +423,99 @@ const forestValleyEvents: RaceEventConfig[] = [
     finishCheckpointId: '',
     mapType: 'drift',
   },
+  {
+    id: 'forest_elimination_30s',
+    mode: 'elimination',
+    name: 'Forest Elimination Knockout',
+    subtitle: 'Forest Valley Circuit • 30s Knockout Rounds',
+    badgeText: 'ELIMINATION',
+    lapsBadge: '30S KNOCKOUT',
+    description:
+      'Every 30 seconds, the driver in last place is eliminated from the race. Maintain position and fight forward until only the champion remains.',
+    specs: {
+      length: '980 M',
+      sectors: 'KNOCKOUT ARENA',
+      surface: 'ASPHALT',
+    },
+    startPosition: new Vector3(1.8, 0.05, -10.0),
+    startYaw: 0,
+    checkpointIds: [
+      'CP_1_NORTH_ENTRY',
+      'CP_2_EAST_CHUTE',
+      'CP_3_INFIELD_DESCENT',
+      'CP_4_CAROUSEL_SHOOT',
+      'CP_5_BACK_STRAIGHT_LAUNCH',
+      'CP_6_BACK_STRAIGHT_BRAKING',
+      'CP_7_ARENA_DRIFT_SWEEPER',
+      'CP_8_WEST_STRAIGHT_ENTRY',
+      'CP_9_WEST_STRAIGHT_MID',
+      'CP_0_START_FINISH',
+    ],
+    finishCheckpointId: '',
+    mapType: 'loop',
+  },
+  {
+    id: 'forest_police_pursuit',
+    mode: 'pursuit',
+    name: 'Highway Police Pursuit',
+    subtitle: 'Forest Valley Highway • Interceptor Chase',
+    badgeText: 'PURSUIT EVASION',
+    lapsBadge: 'OUTRUN PATROL',
+    description:
+      'An aggressive Fairheaven Interceptor is hot on your tail. Use drafting, nitro boost, and tight apex lines to break radar lock and escape before you get boxed in!',
+    specs: {
+      length: '980 M',
+      sectors: 'PATROL ZONE',
+      surface: 'ASPHALT',
+    },
+    startPosition: new Vector3(0, 0.05, -10.0),
+    startYaw: 0,
+    checkpointIds: [
+      'CP_1_NORTH_ENTRY',
+      'CP_2_EAST_CHUTE',
+      'CP_3_INFIELD_DESCENT',
+      'CP_4_CAROUSEL_SHOOT',
+      'CP_5_BACK_STRAIGHT_LAUNCH',
+      'CP_6_BACK_STRAIGHT_BRAKING',
+      'CP_7_ARENA_DRIFT_SWEEPER',
+      'CP_8_WEST_STRAIGHT_ENTRY',
+      'CP_9_WEST_STRAIGHT_MID',
+      'CP_0_START_FINISH',
+    ],
+    finishCheckpointId: 'CP_0_START_FINISH',
+    mapType: 'loop',
+  },
+  {
+    id: 'forest_speed_trap_radar',
+    mode: 'speed_trap',
+    name: 'Apex Speed Trap Challenge',
+    subtitle: 'Forest Valley Circuit • 3 Radar Gates',
+    badgeText: 'RADAR CHALLENGE',
+    lapsBadge: 'MAX VELOCITY',
+    description:
+      'Hit maximum velocity through 3 designated radar speed traps placed across high-speed straights. Aggregate peak velocity decides the podium.',
+    specs: {
+      length: '980 M',
+      sectors: '3 RADAR TRAPS',
+      surface: 'ASPHALT',
+    },
+    startPosition: new Vector3(1.8, 0.05, -10.0),
+    startYaw: 0,
+    checkpointIds: [
+      'CP_1_NORTH_ENTRY',
+      'CP_2_EAST_CHUTE',
+      'CP_3_INFIELD_DESCENT',
+      'CP_4_CAROUSEL_SHOOT',
+      'CP_5_BACK_STRAIGHT_LAUNCH',
+      'CP_6_BACK_STRAIGHT_BRAKING',
+      'CP_7_ARENA_DRIFT_SWEEPER',
+      'CP_8_WEST_STRAIGHT_ENTRY',
+      'CP_9_WEST_STRAIGHT_MID',
+      'CP_0_START_FINISH',
+    ],
+    finishCheckpointId: 'CP_0_START_FINISH',
+    mapType: 'loop',
+  },
 ];
 
 export const ForestValleyCircuit: CircuitDefinition = {
@@ -552,50 +644,8 @@ export const ForestValleyCircuit: CircuitDefinition = {
     // Verges are built continuously along the full spline by RoadMeshBuilder.buildVerges
   },
 
-  buildRoadsideInfrastructure: async (scene: Scene, parent: TransformNode, yOffset: number) => {
-    const adManager = RoadsideAdManager.getInstance(scene);
-    await adManager.initialize();
-
-    // 1. Start/Finish Overhead Sponsor Gantry spanning the 13m road at (0, 0, 0)
-    adManager.createSponsorGantry('FV_Gantry_StartFinish', new Vector3(0, yOffset, 0), Math.PI, parent);
-
-    // 2. North Straight Big Ad Screen (3x scale = 24m x 11.4m) approaching Turn 1
-    adManager.createBigAdScreen('FV_BigAd_NorthStraight', new Vector3(14.0, yOffset, 65.0), Math.PI - 0.22, parent);
-
-    // 3. Paddock Architecture along Main Straight (Outer West side, X ≈ -22)
-    // - Skyscraper Tower with 4:3 Portrait LED Wall Ad facing track (+X)
-    adManager.createBuildingTower('FV_Tower_Paddock_Ad', new Vector3(-24.0, yOffset, 15.0), Math.PI * 0.5, parent);
-
-    // - Rooftop Ad Building facing track
-    adManager.createBuildingRooftop('FV_Rooftop_Paddock_Ad', new Vector3(-22.0, yOffset, -22.0), Math.PI * 0.5, parent);
-
-    // - Medium and Small Filler Buildings completing paddock row
-    adManager.createBuildingFiller('FV_Filler_Med_Paddock', new Vector3(-24.0, yOffset, 42.0), Math.PI * 0.5, 'med', parent);
-    adManager.createBuildingFiller('FV_Filler_Small_Paddock', new Vector3(-22.0, yOffset, -48.0), Math.PI * 0.5, 'small', parent);
-
-    // 4. Grand Back Straight Billboards (Cars travel south, Z: +10 down to -140, X ≈ 152)
-    // - Highway Mega Billboard (12m x 5m, clearance 11.5m)
-    adManager.createHighwayMegaBillboard('FV_MegaBillboard_BackStraight', new Vector3(164.0, yOffset, -30.0), Math.PI, parent);
-
-    // - Infield Big Ad Screen (3x scale) facing oncoming southbound cars
-    adManager.createBigAdScreen('FV_BigAd_BackStraight', new Vector3(138.0, yOffset, -65.0), 0.20, parent);
-
-    // - Roadside Dual Billboard (8m x 3.8m, dual-sided)
-    adManager.createBillboardDual('FV_DualBillboard_BackStraight', new Vector3(164.0, yOffset, -100.0), Math.PI * 0.5, parent);
-
-    // 5. Continuous Track Barrier Banners along South Sweeper runoff
-    const barrierPositions = [
-      { x: 154.0, z: -130.0, rot: -0.3 },
-      { x: 148.0, z: -142.0, rot: -0.7 },
-      { x: 136.0, z: -150.0, rot: -1.2 },
-      { x: 120.0, z: -154.0, rot: -1.57 },
-      { x: 104.0, z: -154.0, rot: -1.57 },
-    ];
-    barrierPositions.forEach((b, idx) => {
-      adManager.createBarrierBanner(`FV_Barrier_SouthSweeper_${idx}`, new Vector3(b.x, yOffset, b.z), b.rot, parent);
-    });
-
-    // 6. Classic motorsport brake boards for racing reference
+  buildRoadsideInfrastructure: (scene: Scene, parent: TransformNode, yOffset: number) => {
+    // Classic motorsport brake boards for racing reference
     const boardMat = new StandardMaterial('FV_BrakeBoardMat', scene);
     boardMat.diffuseColor = new Color3(0.9, 0.9, 0.9);
     const postMat = new StandardMaterial('FV_PostMat', scene);

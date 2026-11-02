@@ -7,6 +7,7 @@ export interface GameSettings {
   masterVolume: number;
   engineVolume: number;
   effectsVolume: number;
+  musicVolume: number;
   isMuted: boolean;
   vehiclePaintId: string;
   selectedVehicleId: string;
@@ -27,6 +28,7 @@ export class SettingsManager {
       masterVolume: 0.8,
       engineVolume: 0.8,
       effectsVolume: 0.8,
+      musicVolume: 0.7,
       isMuted: false,
       vehiclePaintId: 'pearl_white',
       selectedVehicleId: 'mercedes_slc',
@@ -48,6 +50,9 @@ export class SettingsManager {
         }
         if (typeof parsed.effectsVolume === 'number') {
           defaults.effectsVolume = Math.max(0, Math.min(1.0, parsed.effectsVolume));
+        }
+        if (typeof parsed.musicVolume === 'number') {
+          defaults.musicVolume = Math.max(0, Math.min(1.0, parsed.musicVolume));
         }
         if (typeof parsed.isMuted === 'boolean') {
           defaults.isMuted = parsed.isMuted;
@@ -112,6 +117,11 @@ export class SettingsManager {
 
   public setEffectsVolume(volume: number): void {
     this.settings.effectsVolume = Math.max(0, Math.min(1.0, volume));
+    this.saveSettings();
+  }
+
+  public setMusicVolume(volume: number): void {
+    this.settings.musicVolume = Math.max(0, Math.min(1.0, volume));
     this.saveSettings();
   }
 

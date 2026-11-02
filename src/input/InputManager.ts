@@ -1,9 +1,12 @@
+import { requestFullscreenIfMobile, toggleFullscreen } from '../utils/Fullscreen';
+
 export interface InputState {
   forward: boolean;
   backward: boolean;
   steerLeft: boolean;
   steerRight: boolean;
   handbrake: boolean;
+  boost: boolean;
   reset: boolean;
   toggleCamera: boolean;
   pause: boolean;
@@ -18,6 +21,7 @@ export class InputManager {
   private pendingPause: boolean = false;
 
   private touchEnabled: boolean = false;
+  private inRace: boolean = false;
   private touchContainer: HTMLElement | null = null;
   private toggleBtn: HTMLButtonElement | null = null;
 
@@ -89,10 +93,11 @@ export class InputManager {
     this.touchContainer.className = this.touchEnabled ? 'touch-visible' : 'touch-hidden';
 
     this.touchContainer.innerHTML = `
-      <!-- Top Utility Mini-Pills (Reset, Camera, Pause) -->
+      <!-- Bottom Utility Mini-Pills (Reset, Camera, Fullscreen, Pause) -->
       <div class="apex-touch-utility-bar">
         <button type="button" class="apex-touch-util-btn" data-action="reset">↻ RESET</button>
         <button type="button" class="apex-touch-util-btn" data-action="toggleCamera">🎥 CAM</button>
+        <button type="button" class="apex-touch-util-btn" data-action="toggleFullscreen" title="Toggle Fullscreen">⛶ FULL</button>
         <button type="button" class="apex-touch-util-btn" data-action="pause">⏸ PAUSE</button>
       </div>
 
@@ -102,8 +107,9 @@ export class InputManager {
         <button type="button" class="apex-touch-pad steer-btn" data-action="steerRight" aria-label="Steer Right">▶</button>
       </div>
 
-      <!-- Right Thumb Cluster: Drift, Brake/Rev, Gas -->
+      <!-- Right Thumb Cluster: Nitro, Drift, Brake/Rev, Gas -->
       <div class="apex-touch-cluster right-cluster">
+        <button type="button" class="apex-touch-pad nitro-btn" data-action="boost">⚡ NITRO</button>
         <button type="button" class="apex-touch-pad drift-btn" data-action="handbrake">DRIFT</button>
         <button type="button" class="apex-touch-pad brake-btn" data-action="backward">BRAKE</button>
         <button type="button" class="apex-touch-pad gas-btn" data-action="forward">GAS</button>
@@ -112,6 +118,14 @@ export class InputManager {
 
     document.body.appendChild(this.touchContainer);
     this.bindTouchButtons();
+    this.updateTouchVisibility();
+
+    // Auto-engage fullscreen upon first mobile user interaction
+    const triggerMobileFullscreen = () => {
+      requestFullscreenIfMobile();
+    };
+    window.addEventListener('touchstart', triggerMobileFullscreen, { passive: true });
+    window.addEventListener('pointerdown', triggerMobileFullscreen, { passive: true });
 
     // Re-check if screen is resized/rotated into mobile dimensions (unless manually toggled)
     window.addEventListener('resize', () => {
@@ -156,11 +170,21 @@ export class InputManager {
       const action = btn.dataset.action;
       btn.addEventListener('pointerdown', (e) => {
         e.preventDefault();
+        requestFullscreenIfMobile();
         if (action === 'reset') this.pendingReset = true;
         if (action === 'toggleCamera') this.pendingToggleCamera = true;
+        if (action === 'toggleFullscreen') toggleFullscreen();
         if (action === 'pause') this.pendingPause = true;
       });
     });
+  }
+
+  public setInRace(inRace: boolean): void {
+    this.inRace = inRace;
+    if (!inRace) {
+      this.touchActions.clear();
+    }
+    this.updateTouchVisibility();
   }
 
   public setTouchControlsEnabled(enabled: boolean, isManual: boolean = true): void {
@@ -172,8 +196,17 @@ export class InputManager {
       if (isManual) this.toggleBtn.dataset.manualOverride = 'true';
       this.updateToggleButtonLabel();
     }
+    this.updateTouchVisibility();
+  }
+
+  private updateTouchVisibility(): void {
+    const shouldShow = this.inRace && this.touchEnabled;
     if (this.touchContainer) {
-      this.touchContainer.className = enabled ? 'touch-visible' : 'touch-hidden';
+      this.touchContainer.className = shouldShow ? 'touch-visible' : 'touch-hidden';
+      this.touchContainer.style.display = shouldShow ? 'block' : 'none';
+    }
+    if (this.toggleBtn) {
+      this.toggleBtn.style.display = this.inRace ? 'block' : 'none';
     }
   }
 
@@ -190,24 +223,26 @@ export class InputManager {
     style.textContent = `
       #apex-touch-toggle-btn {
         position: fixed;
-        top: 10px;
-        right: 12px;
+        bottom: 58px;
+        left: 50%;
+        transform: translateX(-50%);
         z-index: 9999;
-        padding: 5px 11px;
+        padding: 4px 12px;
         font-family: 'Orbitron', 'Rajdhani', sans-serif;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         letter-spacing: 0.06em;
         color: rgba(255, 255, 255, 0.78);
-        background: rgba(10, 15, 26, 0.55);
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(10, 15, 26, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 999px;
         backdrop-filter: blur(6px);
         cursor: pointer;
         user-select: none;
         -webkit-user-select: none;
         transition: opacity 0.2s, border-color 0.2s, background 0.2s;
-        opacity: 0.65;
+        opacity: 0.7;
+        display: none;
       }
       #apex-touch-toggle-btn:hover,
       #apex-touch-toggle-btn.is-active {
@@ -233,11 +268,13 @@ export class InputManager {
       }
       .apex-touch-utility-bar {
         position: absolute;
-        top: 44px;
-        right: 12px;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
         display: flex;
         gap: 6px;
         pointer-events: auto;
+        z-index: 95;
       }
       .apex-touch-util-btn {
         padding: 5px 10px;
@@ -282,6 +319,18 @@ export class InputManager {
         width: 72px;
         height: 72px;
         font-size: 24px;
+      }
+      .apex-touch-pad.nitro-btn {
+        width: 66px;
+        height: 60px;
+        font-size: 11px;
+        border-color: rgba(6, 182, 212, 0.6);
+        color: #06b6d4;
+        background: rgba(6, 182, 212, 0.15);
+      }
+      .apex-touch-pad.nitro-btn.active-touch {
+        background: rgba(6, 182, 212, 0.55);
+        box-shadow: 0 0 16px rgba(6, 182, 212, 0.75);
       }
       .apex-touch-pad.drift-btn {
         width: 64px;
@@ -333,6 +382,11 @@ export class InputManager {
       handbrake:
         this.keys.has('Space') ||
         this.touchActions.has('handbrake'),
+      boost:
+        this.keys.has('ShiftLeft') ||
+        this.keys.has('ShiftRight') ||
+        this.keys.has('KeyN') ||
+        this.touchActions.has('boost'),
       reset: this.pendingReset,
       toggleCamera: this.pendingToggleCamera,
       pause: this.pendingPause,

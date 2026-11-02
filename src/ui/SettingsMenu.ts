@@ -5,6 +5,7 @@ export interface SettingsMenuCallbacks {
   onVolumeChange: (volume: number) => void;
   onEngineVolumeChange?: (volume: number) => void;
   onEffectsVolumeChange?: (volume: number) => void;
+  onMusicVolumeChange?: (volume: number) => void;
   onMuteToggle?: (isMuted: boolean) => void;
   onBack: () => void;
 }
@@ -23,6 +24,8 @@ export class SettingsMenu {
   private engineValueText: HTMLElement | null = null;
   private effectsSlider: HTMLInputElement | null = null;
   private effectsValueText: HTMLElement | null = null;
+  private musicSlider: HTMLInputElement | null = null;
+  private musicValueText: HTMLElement | null = null;
   private muteButton: HTMLButtonElement | null = null;
 
   private boundKeyDown: (e: KeyboardEvent) => void;
@@ -97,6 +100,17 @@ export class SettingsMenu {
 
           <div class="setting-item">
             <div class="setting-meta">
+              <span class="setting-title">RACE & MENU MUSIC</span>
+              <span class="setting-subtext">Procedural synthwave soundtrack output</span>
+            </div>
+            <div class="slider-control-row">
+              <input type="range" id="music-slider" min="0" max="100" step="5" class="apex-slider" />
+              <span id="music-percentage" class="slider-value">70%</span>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-meta">
               <span class="setting-title">AUDIO MUTE</span>
               <span class="setting-subtext">Instantly silence all game and vehicle sound</span>
             </div>
@@ -127,6 +141,8 @@ export class SettingsMenu {
     this.engineValueText = document.getElementById('engine-percentage');
     this.effectsSlider = document.getElementById('effects-slider') as HTMLInputElement;
     this.effectsValueText = document.getElementById('effects-percentage');
+    this.musicSlider = document.getElementById('music-slider') as HTMLInputElement;
+    this.musicValueText = document.getElementById('music-percentage');
     this.muteButton = document.getElementById('btn-audio-mute') as HTMLButtonElement;
 
     this.qualityButtons.forEach((btn, quality) => {
@@ -166,6 +182,18 @@ export class SettingsMenu {
         }
         if (this.callbacks.onEffectsVolumeChange) {
           this.callbacks.onEffectsVolumeChange(val);
+        }
+      });
+    }
+
+    if (this.musicSlider) {
+      this.musicSlider.addEventListener('input', () => {
+        const val = parseInt(this.musicSlider!.value, 10) / 100;
+        if (this.musicValueText) {
+          this.musicValueText.textContent = `${Math.round(val * 100)}%`;
+        }
+        if (this.callbacks.onMusicVolumeChange) {
+          this.callbacks.onMusicVolumeChange(val);
         }
       });
     }
@@ -239,6 +267,13 @@ export class SettingsMenu {
     }
     if (this.effectsValueText) {
       this.effectsValueText.textContent = `${Math.round(s.effectsVolume * 100)}%`;
+    }
+
+    if (this.musicSlider) {
+      this.musicSlider.value = String(Math.round((s.musicVolume !== undefined ? s.musicVolume : 0.7) * 100));
+    }
+    if (this.musicValueText) {
+      this.musicValueText.textContent = `${Math.round((s.musicVolume !== undefined ? s.musicVolume : 0.7) * 100)}%`;
     }
 
     this.updateMuteButtonDisplay(s.isMuted);

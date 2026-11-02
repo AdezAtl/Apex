@@ -83,7 +83,8 @@ export class ChaseCamera {
     forwardSpeed: number,
     lateralSpeed: number,
     steeringAngle: number = 0,
-    dt: number = 0.016
+    dt: number = 0.016,
+    isBoosting: boolean = false
   ): void {
     const clampedDt = Math.min(dt, 0.1);
     if (clampedDt <= 0) return;
@@ -158,9 +159,10 @@ export class ChaseCamera {
     const targetAlpha = 1.0 - Math.exp(-this.config.targetDamping * clampedDt);
     this.currentTarget = Vector3.Lerp(this.currentTarget, idealTarget, targetAlpha);
 
-    // 5. SPEED-BASED DYNAMIC FOV
-    const targetFov = this.currentBaseFov + speedRatio * (this.currentMaxFov - this.currentBaseFov);
-    const fovAlpha = 1.0 - Math.exp(-this.config.fovDamping * clampedDt);
+    // 5. SPEED-BASED DYNAMIC FOV & NITRO BOOST KICK
+    const boostFovBonus = isBoosting ? 0.08 : 0.0;
+    const targetFov = this.currentBaseFov + speedRatio * (this.currentMaxFov - this.currentBaseFov) + boostFovBonus;
+    const fovAlpha = 1.0 - Math.exp(-(this.config.fovDamping + (isBoosting ? 3.0 : 0.0)) * clampedDt);
     this.camera.fov = Scalar.Lerp(this.camera.fov, targetFov, fovAlpha);
 
     // 6. CAMERA SHAKE ON IMPACTS

@@ -59,6 +59,7 @@ export class EventSelect {
       this.selectedCircuitId = circuitId;
       const circuit = this.getSelectedCircuit();
       this.selectedEventIndex = Math.min(this.selectedEventIndex, circuit.events.length - 1);
+      this.renderEventTabs();
       this.renderSelectedEvent();
     }
   }
@@ -145,18 +146,7 @@ export class EventSelect {
           <div class="arcade-col-event">
             <div class="arcade-section-label">02 // SELECT RACE MODE</div>
             <div class="event-tabs-bar" role="tablist">
-              <button id="tab-event-0" class="event-tab active" role="tab" aria-selected="true" type="button">
-                <span class="tab-badge">TIME ATTACK</span>
-                <span id="tab-title-0" class="tab-title">Time Trial</span>
-              </button>
-              <button id="tab-event-1" class="event-tab" role="tab" aria-selected="false" type="button">
-                <span class="tab-badge">SPRINT RACE</span>
-                <span id="tab-title-1" class="tab-title">Sector Sprint</span>
-              </button>
-              <button id="tab-event-2" class="event-tab" role="tab" aria-selected="false" type="button">
-                <span class="tab-badge">DRIFT CHALLENGE</span>
-                <span id="tab-title-2" class="tab-title">Drift Arena</span>
-              </button>
+              <!-- Dynamically rendered via renderEventTabs -->
             </div>
 
             <div class="arcade-event-panel">
@@ -225,11 +215,6 @@ export class EventSelect {
       });
     });
 
-    this.tabElements = [
-      document.getElementById('tab-event-0')!,
-      document.getElementById('tab-event-1')!,
-      document.getElementById('tab-event-2')!,
-    ];
     this.typeBadgeElement = document.getElementById('event-type-badge');
     this.lapsBadgeElement = document.getElementById('event-laps-badge');
     this.eventNameElement = document.getElementById('event-name');
@@ -255,12 +240,7 @@ export class EventSelect {
       });
     });
 
-    this.tabElements.forEach((tab, index) => {
-      tab.addEventListener('click', () => {
-        this.selectedEventIndex = index;
-        this.renderSelectedEvent();
-      });
-    });
+    this.renderEventTabs();
 
     document.getElementById('btn-event-open-garage')?.addEventListener('click', () => {
       this.triggerOpenGarage();
@@ -275,6 +255,31 @@ export class EventSelect {
     });
 
     this.renderSelectedEvent();
+  }
+
+  private renderEventTabs(): void {
+    const circuit = this.getSelectedCircuit();
+    const eventTabsBar = this.container?.querySelector('.event-tabs-bar');
+    if (!eventTabsBar) return;
+
+    eventTabsBar.innerHTML = circuit.events
+      .map(
+        (ev, idx) => `
+      <button id="tab-event-${idx}" class="event-tab ${idx === this.selectedEventIndex ? 'active' : ''}" role="tab" aria-selected="${idx === this.selectedEventIndex}" type="button">
+        <span class="tab-badge">${ev.badgeText}</span>
+        <span class="tab-title">${ev.name.replace(/Apex|Circuit|Sector|Challenge|Highway|Grand Prix|Forest|Ridgeway/g, '').trim() || ev.name}</span>
+      </button>
+    `
+      )
+      .join('');
+
+    this.tabElements = Array.from(eventTabsBar.querySelectorAll<HTMLButtonElement>('.event-tab'));
+    this.tabElements.forEach((tab, index) => {
+      tab.addEventListener('click', () => {
+        this.selectedEventIndex = index;
+        this.renderSelectedEvent();
+      });
+    });
   }
 
   private triggerOpenGarage(): void {
@@ -298,14 +303,6 @@ export class EventSelect {
       tab.classList.toggle('active', isCircActive);
     });
 
-    // Update event mode tab titles based on active circuit
-    const tab0Title = document.getElementById('tab-title-0');
-    const tab1Title = document.getElementById('tab-title-1');
-    const tab2Title = document.getElementById('tab-title-2');
-    if (tab0Title && circuit.events[0]) tab0Title.textContent = circuit.events[0].name.replace(' Circuit', '');
-    if (tab1Title && circuit.events[1]) tab1Title.textContent = circuit.events[1].name.replace(' Sector', '');
-    if (tab2Title && circuit.events[2]) tab2Title.textContent = circuit.events[2].name.replace(' Challenge', '');
-
     // Update tab active states
     this.tabElements.forEach((tab, index) => {
       const isActive = index === this.selectedEventIndex;
@@ -327,6 +324,12 @@ export class EventSelect {
         this.startButtonTextElement.textContent = 'START DRIFT CHALLENGE';
       } else if (event.mode === 'sprint') {
         this.startButtonTextElement.textContent = 'START SPRINT RACE';
+      } else if (event.mode === 'elimination') {
+        this.startButtonTextElement.textContent = 'START ELIMINATION KNOCKOUT';
+      } else if (event.mode === 'pursuit') {
+        this.startButtonTextElement.textContent = 'START POLICE PURSUIT';
+      } else if (event.mode === 'speed_trap') {
+        this.startButtonTextElement.textContent = 'START SPEED TRAP CHALLENGE';
       } else {
         this.startButtonTextElement.textContent = 'START RACE';
       }

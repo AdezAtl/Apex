@@ -197,13 +197,25 @@ export class FinishScreen {
         this.finalTimeLabelElement.textContent = 'TOTAL DRIFT SCORE';
       } else if (event.mode === 'sprint') {
         this.finalTimeLabelElement.textContent = 'FINAL SPRINT TIME';
+      } else if (event.mode === 'elimination') {
+        this.finalTimeLabelElement.textContent = 'SURVIVAL TIME';
+      } else if (event.mode === 'pursuit') {
+        this.finalTimeLabelElement.textContent = 'PURSUIT TIME';
+      } else if (event.mode === 'speed_trap') {
+        this.finalTimeLabelElement.textContent = 'COMBINED TRAP VELOCITY';
       } else {
         this.finalTimeLabelElement.textContent = 'FINAL LAP TIME';
       }
     }
 
     if (this.bestTimeLabelElement) {
-      this.bestTimeLabelElement.textContent = isDrift ? 'BEST DRIFT SCORE' : 'PERSONAL BEST';
+      if (isDrift) {
+        this.bestTimeLabelElement.textContent = 'BEST DRIFT SCORE';
+      } else if (event.mode === 'speed_trap') {
+        this.bestTimeLabelElement.textContent = 'BEST RECORDED VELOCITY';
+      } else {
+        this.bestTimeLabelElement.textContent = 'PERSONAL BEST';
+      }
     }
 
     if (this.retryBtnTextElement) {
@@ -211,21 +223,35 @@ export class FinishScreen {
         this.retryBtnTextElement.textContent = 'RETRY DRIFT CHALLENGE';
       } else if (event.mode === 'sprint') {
         this.retryBtnTextElement.textContent = 'RETRY SPRINT';
+      } else if (event.mode === 'elimination') {
+        this.retryBtnTextElement.textContent = 'RETRY ELIMINATION';
+      } else if (event.mode === 'pursuit') {
+        this.retryBtnTextElement.textContent = 'RETRY PURSUIT';
+      } else if (event.mode === 'speed_trap') {
+        this.retryBtnTextElement.textContent = 'RETRY SPEED TRAP';
       } else {
         this.retryBtnTextElement.textContent = 'RETRY TIME TRIAL';
       }
     }
 
     if (this.finalTimeElement) {
-      this.finalTimeElement.textContent = isDrift
-        ? RecordManager.formatScore(finalResultValue)
-        : RecordManager.formatTime(finalResultValue);
+      if (isDrift) {
+        this.finalTimeElement.textContent = RecordManager.formatScore(finalResultValue);
+      } else if (event.mode === 'speed_trap') {
+        this.finalTimeElement.textContent = `${Math.round(finalResultValue)} KM/H`;
+      } else {
+        this.finalTimeElement.textContent = RecordManager.formatTime(finalResultValue);
+      }
     }
 
     if (this.bestTimeElement) {
-      this.bestTimeElement.textContent = isDrift
-        ? RecordManager.formatScore(result.bestTime)
-        : RecordManager.formatTime(result.bestTime);
+      if (isDrift) {
+        this.bestTimeElement.textContent = RecordManager.formatScore(result.bestTime);
+      } else if (event.mode === 'speed_trap') {
+        this.bestTimeElement.textContent = `${Math.round(result.bestTime)} KM/H`;
+      } else {
+        this.bestTimeElement.textContent = RecordManager.formatTime(result.bestTime);
+      }
     }
 
     if (this.positionTileElement) {

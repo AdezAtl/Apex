@@ -167,10 +167,11 @@ export class SceneManager {
     forwardSpeed: number,
     lateralSpeed: number,
     steeringAngle: number = 0,
-    dt: number = 0.016
+    dt: number = 0.016,
+    isBoosting: boolean = false
   ): void {
     if (this.chaseCamera && this.currentCameraMode !== 'orbit') {
-      this.chaseCamera.update(carPosition, carYaw, forwardSpeed, lateralSpeed, steeringAngle, dt);
+      this.chaseCamera.update(carPosition, carYaw, forwardSpeed, lateralSpeed, steeringAngle, dt, isBoosting);
     }
   }
 

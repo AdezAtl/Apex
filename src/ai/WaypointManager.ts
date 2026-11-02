@@ -99,20 +99,24 @@ export class WaypointManager {
 
       curr.curvatureDeg = angleDeg;
 
-      // Assign higher, competitive speed limits according to corner sharpness
-      if (angleDeg > 35) {
-        curr.targetSpeed = 22.0; // Hairpin / 90° corner apex (~79 km/h, was 15.0)
-      } else if (angleDeg > 18) {
-        curr.targetSpeed = 29.0; // Medium-radius curve apex (~104 km/h, was 20.0)
-      } else if (angleDeg > 8) {
-        curr.targetSpeed = 36.0; // Fast sweeper (~130 km/h, was 26.0)
+      // Assign realistic corner apex speeds based on curvature geometry
+      if (angleDeg > 14.0) {
+        curr.targetSpeed = 22.0; // Hairpin / sharp 90° corner apex (~79 km/h)
+      } else if (angleDeg > 8.0) {
+        curr.targetSpeed = 30.0; // Medium-radius curve apex (~108 km/h)
+      } else if (angleDeg > 4.5) {
+        curr.targetSpeed = 42.0; // Medium-fast bend (~151 km/h)
+      } else if (angleDeg > 2.0) {
+        curr.targetSpeed = 58.0; // Fast sweeper (~209 km/h)
+      } else if (angleDeg > 0.8) {
+        curr.targetSpeed = 75.0; // High-speed kink (~270 km/h)
       } else {
-        curr.targetSpeed = 46.0; // Full throttle straight (~165 km/h, was 33.0)
+        curr.targetSpeed = 110.0; // Full straightaway (governed by vehicle top speed)
       }
     }
 
-    // Backward propagation pass: brake later before corners (12.5 m/s^2 instead of 8.5)
-    const nominalDecel = 12.5;
+    // Backward propagation pass: brake before corners with realistic racing deceleration
+    const nominalDecel = 14.5;
     for (let pass = 0; pass < 3; pass++) {
       for (let i = n - 1; i >= 0; i--) {
         const curr = this.waypoints[i];

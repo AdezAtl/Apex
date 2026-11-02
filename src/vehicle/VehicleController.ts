@@ -34,6 +34,9 @@ export interface VehicleTelemetry {
   throttleInput?: boolean;
   brakeInput?: boolean;
   handbrakeInput?: boolean;
+  nitro?: number;
+  isBoosting?: boolean;
+  isDrafting?: boolean;
 }
 
 export class VehicleController {
@@ -53,6 +56,12 @@ export class VehicleController {
   public lateralAcceleration: number = 0; // m/s^2
   public isHandbrakeEngaged: boolean = false;
 
+  // Nitro Boost & Drafting System
+  public nitro: number = 100; // 0 - 100
+  public maxNitro: number = 100;
+  public isBoosting: boolean = false;
+  public isDrafting: boolean = false;
+
   // Diagnostics and live physics measurements
   public latestEffectiveGrip: number = 13.0;
   public latestAeroBonus: number = 0.0;
@@ -62,6 +71,7 @@ export class VehicleController {
     steerLeft: false,
     steerRight: false,
     handbrake: false,
+    boost: false,
     reset: false,
     pause: false,
     toggleCamera: false,
@@ -147,7 +157,32 @@ export class VehicleController {
     const maxSteerStep = this.config.steerRate * dt;
     this.steeringAngle += Math.max(-maxSteerStep, Math.min(maxSteerStep, steerDelta));
 
-    // 2. LONGITUDINAL DYNAMICS (Acceleration / Braking / Reverse)
+    // 2. LONGITUDINAL DYNAMICS & NITRO BOOST
+    const canBoost = input.boost && this.nitro > 0.5 && this.forwardSpeed > 1.0;
+    this.isBoosting = canBoost;
+
+    if (this.isBoosting) {
+      this.nitro = Math.max(0, this.nitro - 25.0 * dt);
+    } else {
+      // Nitro recharge: drift bonus + drafting bonus + passive crawl
+      const isActivelyDrifting = Math.abs(this.lateralSpeed) > 1.8;
+      let regenRate = 3.5; // Passive regen
+      if (isActivelyDrifting) regenRate += 16.0;
+      if (this.isDrafting) regenRate += 12.0;
+      this.nitro = Math.min(this.maxNitro, this.nitro + regenRate * dt);
+    }
+
+    let boostBonusAccel = 0;
+    let effectiveMaxSpeed = this.config.maxForwardSpeed;
+    if (this.isBoosting) {
+      boostBonusAccel += 8.2;
+      effectiveMaxSpeed *= 1.15; // +15% top speed ceiling
+    }
+    if (this.isDrafting) {
+      boostBonusAccel += 2.6;
+      effectiveMaxSpeed *= 1.06; // +6% slipstream ceiling
+    }
+
     if (input.forward) {
       if (this.forwardSpeed < -0.2) {
         // Moving backward: pressing forward applies service brakes to stop reverse motion
@@ -155,7 +190,7 @@ export class VehicleController {
         if (this.forwardSpeed > 0) this.forwardSpeed = 0;
       } else {
         // Accelerating forward: progressive power falloff toward top speed
-        const speedFraction = Math.max(0, this.forwardSpeed) / this.config.maxForwardSpeed;
+        const speedFraction = Math.max(0, this.forwardSpeed) / effectiveMaxSpeed;
         const powerCurve = Math.max(0.18, 1.0 - Math.pow(Math.min(1.0, speedFraction), 1.25));
 
         // Low-speed launch traction modulation (boosted for multi-motor AWD, slip for FWD)
@@ -165,10 +200,16 @@ export class VehicleController {
           launchMultiplier = 1.0 + (this.currentProfile.launchTractionFactor - 1.0) * launchBlend;
         }
 
-        this.forwardSpeed += this.config.acceleration * powerCurve * launchMultiplier * dt;
-        if (this.forwardSpeed > this.config.maxForwardSpeed) {
-          this.forwardSpeed = this.config.maxForwardSpeed;
+        this.forwardSpeed += (this.config.acceleration * powerCurve * launchMultiplier + boostBonusAccel) * dt;
+        if (this.forwardSpeed > effectiveMaxSpeed) {
+          this.forwardSpeed = effectiveMaxSpeed;
         }
+      }
+    } else if (this.isBoosting && this.forwardSpeed > 0.5) {
+      // Direct nitro boost impulse even when off standard gas
+      this.forwardSpeed += boostBonusAccel * dt;
+      if (this.forwardSpeed > effectiveMaxSpeed) {
+        this.forwardSpeed = effectiveMaxSpeed;
       }
     } else if (input.backward) {
       if (this.forwardSpeed > 0.2) {
@@ -194,7 +235,9 @@ export class VehicleController {
     }
 
     // Aerodynamic drag resisting forward velocity (F = c * v * |v|)
-    const drag = this.config.aerodynamicDrag * this.forwardSpeed * Math.abs(this.forwardSpeed) * dt;
+    // Slipstream drafting reduces aerodynamic drag by 50%
+    const dragCoeff = this.isDrafting ? this.config.aerodynamicDrag * 0.5 : this.config.aerodynamicDrag;
+    const drag = dragCoeff * this.forwardSpeed * Math.abs(this.forwardSpeed) * dt;
     this.forwardSpeed -= drag;
 
     // Handbrake application: reduces speed smoothly and initiates slide

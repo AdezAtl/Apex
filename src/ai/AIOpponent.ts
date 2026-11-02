@@ -47,98 +47,98 @@ export interface DifficultyTuning {
 export const DIFFICULTY_PRESETS: Record<AIDifficulty, DifficultyTuning> = {
   // 1. Amateur: Relaxed pace, conservative cornering, forgiving acceleration/braking
   amateur: {
-    topSpeedMult: 0.78,     // ~26.0 m/s (~94 km/h) — gentle, accessible straight speed
-    cornerSpeedMult: 0.72,  // Very cautious apex speeds (~38 km/h hairpins, ~68 km/h sweepers)
-    accelMult: 0.70,        // Relaxed, non-threatening acceleration out of corners
-    brakeDecel: 6.0,        // Early, cautious braking zones
-    steerRate: 3.5,         // Smooth, gentle steering transitions
-    lookaheadBase: 10.0,    // Wide, forgiving racing line
-    lookaheadSpeedFactor: 0.38,
-    avoidanceMargin: 3.0,   // Wide berth around player and other cars across 13m road
-    gripFactor: 0.80,       // Generous margin before traction loss
+    topSpeedMult: 0.76,     // Capped top speed (~220 km/h for a 290 km/h car)
+    cornerSpeedMult: 0.72,  // Gentle cornering speeds (~62 km/h hairpins, ~124 km/h sweepers)
+    accelMult: 0.72,        // Relaxed, non-threatening acceleration
+    brakeDecel: 7.0,        // Earlier, softer braking zones
+    steerRate: 3.8,         // Smooth, forgiving steering transitions
+    lookaheadBase: 9.2,     // Wider racing line
+    lookaheadSpeedFactor: 0.35,
+    avoidanceMargin: 2.8,   // Generous spacing
+    gripFactor: 0.88,       // Moderate adhesion
   },
   // 2. Rookie: Moderately paced, fewer mistakes, moderate competitive pressure
   rookie: {
-    topSpeedMult: 0.88,     // ~29.3 m/s (~105 km/h) — balanced club pace
-    cornerSpeedMult: 0.82,  // Consistent corner entry and exit (~44 km/h hairpins, ~77 km/h sweepers)
-    accelMult: 0.82,        // Steady acceleration out of corners
-    brakeDecel: 7.5,        // Measured braking zones
-    steerRate: 4.4,         // Responsive steering rack
-    lookaheadBase: 8.8,     // Cleaner racing lines
-    lookaheadSpeedFactor: 0.32,
-    avoidanceMargin: 2.6,   // Generous multi-lane racing room
-    gripFactor: 0.90,       // Solid tire adhesion
+    topSpeedMult: 0.86,     // Balanced pace (~250 km/h for a 290 km/h car)
+    cornerSpeedMult: 0.84,  // Steady cornering pace (~72 km/h hairpins, ~145 km/h sweepers)
+    accelMult: 0.85,        // Steady acceleration out of corners
+    brakeDecel: 8.5,        // Measured braking zones
+    steerRate: 4.8,         // Responsive steering rack
+    lookaheadBase: 8.0,     // Cleaner racing lines
+    lookaheadSpeedFactor: 0.30,
+    avoidanceMargin: 2.4,   // Confident racing room
+    gripFactor: 0.95,       // Solid tire adhesion
   },
-  // 3. Pro: Demands competent driving, strong acceleration management, competitive racing lines
+  // 3. Pro: Demands competent driving, matches 100% vehicle catalog top speed and performance
   pro: {
-    topSpeedMult: 1.00,     // ~33.3 m/s (120 km/h) — matches player benchmark top speed
-    cornerSpeedMult: 0.96,  // Strong, competitive corner carry (~52 km/h hairpins, ~90 km/h sweepers)
-    accelMult: 1.00,        // Matches player sports car pull
-    brakeDecel: 9.5,        // Direct, crisp braking
-    steerRate: 5.6,         // Direct steering rack response
-    lookaheadBase: 7.2,     // Balanced, efficient racing lines
-    lookaheadSpeedFactor: 0.28,
-    avoidanceMargin: 2.2,   // Competitive racing room
-    gripFactor: 1.00,       // Full standard tire grip
+    topSpeedMult: 1.00,     // Full 100% vehicle top speed (e.g. 290 km/h for M3)
+    cornerSpeedMult: 0.98,  // Strong, competitive corner carry (~84 km/h hairpins, ~169 km/h sweepers)
+    accelMult: 1.00,        // Full stock vehicle acceleration pull
+    brakeDecel: 10.5,       // Crisp, confident threshold braking
+    steerRate: 6.0,         // Direct steering rack response
+    lookaheadBase: 7.0,     // Balanced, efficient racing lines
+    lookaheadSpeedFactor: 0.26,
+    avoidanceMargin: 2.1,   // Competitive racing room
+    gripFactor: 1.04,       // Full sports car mechanical grip
   },
   // 4. Elite: Aggressive but controlled, late braking, fast recovery, demands capable vehicle
   elite: {
-    topSpeedMult: 1.12,     // ~37.3 m/s (~134 km/h) — rapid straight-line pace
-    cornerSpeedMult: 1.08,  // Aggressive corner entry & exit carry (~58 km/h hairpins, ~101 km/h sweepers)
-    accelMult: 1.18,        // Explosive power delivery out of corner exits
-    brakeDecel: 12.0,       // Late-braking mastery into turns
-    steerRate: 7.2,         // Fast, precise steering response
-    lookaheadBase: 6.2,     // Tight apex clipping
-    lookaheadSpeedFactor: 0.24,
-    avoidanceMargin: 1.8,   // Confident overtaking clearance
-    gripFactor: 1.12,       // High mechanical grip
+    topSpeedMult: 1.10,     // High-velocity straight pace (~319 km/h for a 290 km/h car)
+    cornerSpeedMult: 1.08,  // Aggressive corner entry & exit carry (~93 km/h hairpins, ~186 km/h sweepers)
+    accelMult: 1.15,        // Explosive power delivery out of corner exits
+    brakeDecel: 13.0,       // Late-braking mastery into turns
+    steerRate: 7.5,         // Fast, precise steering response
+    lookaheadBase: 6.0,     // Tight apex clipping
+    lookaheadSpeedFactor: 0.22,
+    avoidanceMargin: 1.7,   // Confident overtaking clearance
+    gripFactor: 1.14,       // High mechanical grip & downforce
   },
   // 5. Apex Elite: The pinnacle challenge, exceptionally difficult without top-tier car and flawless driving
   apex_elite: {
-    topSpeedMult: 1.25,     // ~41.6 m/s (~150 km/h) — formidable straight-line velocity
-    cornerSpeedMult: 1.20,  // Razor-sharp corner carry (~65 km/h hairpins, ~112 km/h sweepers)
-    accelMult: 1.35,        // Maximum downforce pull and instant power application
-    brakeDecel: 15.0,       // Threshold braking right on the limit
-    steerRate: 9.5,         // Lightning-fast transient response
-    lookaheadBase: 5.0,     // Perfect geometric apex clipping
-    lookaheadSpeedFactor: 0.20,
-    avoidanceMargin: 1.5,   // Relentless, assertive multi-lane positioning
-    gripFactor: 1.28,       // Supreme aerodynamic & mechanical grip
+    topSpeedMult: 1.20,     // Formidable straight-line velocity (~348 km/h for a 290 km/h car)
+    cornerSpeedMult: 1.18,  // Razor-sharp corner carry (~101 km/h hairpins, ~204 km/h sweepers)
+    accelMult: 1.30,        // Maximum downforce pull and instant power application
+    brakeDecel: 15.5,       // Threshold braking right on the limit
+    steerRate: 9.0,         // Lightning-fast transient response
+    lookaheadBase: 5.2,     // Perfect geometric apex clipping
+    lookaheadSpeedFactor: 0.18,
+    avoidanceMargin: 1.4,   // Relentless, assertive multi-lane positioning
+    gripFactor: 1.24,       // Supreme aerodynamic & mechanical grip
   },
 
   // Backward compatibility aliases for existing verification suites:
   easy: {
-    topSpeedMult: 0.82,
-    cornerSpeedMult: 0.78,
-    accelMult: 0.75,
-    brakeDecel: 6.5,
+    topSpeedMult: 0.76,
+    cornerSpeedMult: 0.72,
+    accelMult: 0.72,
+    brakeDecel: 7.0,
     steerRate: 3.8,
-    lookaheadBase: 9.5,
+    lookaheadBase: 9.2,
     lookaheadSpeedFactor: 0.35,
-    avoidanceMargin: 3.0,
-    gripFactor: 0.85,
+    avoidanceMargin: 2.8,
+    gripFactor: 0.88,
   },
   normal: {
     topSpeedMult: 1.00,
-    cornerSpeedMult: 0.96,
+    cornerSpeedMult: 0.98,
     accelMult: 1.00,
-    brakeDecel: 9.5,
-    steerRate: 5.6,
-    lookaheadBase: 7.2,
-    lookaheadSpeedFactor: 0.28,
-    avoidanceMargin: 2.2,
-    gripFactor: 1.00,
+    brakeDecel: 10.5,
+    steerRate: 6.0,
+    lookaheadBase: 7.0,
+    lookaheadSpeedFactor: 0.26,
+    avoidanceMargin: 2.1,
+    gripFactor: 1.04,
   },
   hard: {
-    topSpeedMult: 1.16,
-    cornerSpeedMult: 1.14,
-    accelMult: 1.25,
-    brakeDecel: 13.5,
-    steerRate: 8.5,
-    lookaheadBase: 5.8,
-    lookaheadSpeedFactor: 0.22,
-    avoidanceMargin: 1.6,
-    gripFactor: 1.20,
+    topSpeedMult: 1.20,
+    cornerSpeedMult: 1.18,
+    accelMult: 1.30,
+    brakeDecel: 15.5,
+    steerRate: 9.0,
+    lookaheadBase: 5.2,
+    lookaheadSpeedFactor: 0.18,
+    avoidanceMargin: 1.4,
+    gripFactor: 1.24,
   },
 };
 
@@ -364,12 +364,13 @@ export class AIOpponent {
       angleDiff = 0;
     }
 
-    // Check off-track distance
-    const distToCenter = Vector3.Distance(
-      new Vector3(this.position.x, 0, this.position.z),
-      new Vector3(target.targetPoint.x, 0, target.targetPoint.z)
+    // Check off-track distance from track centerline
+    const closestWp = waypointManager.findClosestWaypoint(this.position);
+    const distToCenter = Math.hypot(
+      this.position.x - closestWp.position.x,
+      this.position.z - closestWp.position.z
     );
-    this.isRecovering = distToCenter > 4.2;
+    this.isRecovering = distToCenter > 6.2;
 
     // Target steering angle clamped to vehicle's physical maximum steering lock
     const maxSteer = this.profile.maxSteerAngle;
@@ -390,13 +391,11 @@ export class AIOpponent {
     const speedRatio = Math.min(1.0, this.forwardSpeed / Math.max(10.0, this.profile.maxForwardSpeed));
     const aeroFactor = 1.0 + (this.profile.downforceRating / 100) * 0.22 * Math.pow(speedRatio, 2);
 
-    let desiredSpeed = target.targetSpeed * gripRatio * aeroFactor * this.tuning.cornerSpeedMult * (this.driverPace || 1.0) * this.personality.cornerEntrySpeedFactor;
-    // On straights, let targetTopSpeed govern
-    if (target.curvatureDeg < 14) {
-      desiredSpeed = targetTopSpeed;
-    }
+    const cornerSafeSpeed = target.targetSpeed * gripRatio * aeroFactor * this.tuning.cornerSpeedMult * (this.driverPace || 1.0) * this.personality.cornerEntrySpeedFactor;
+
+    let desiredSpeed = Math.min(targetTopSpeed, cornerSafeSpeed);
     if (this.isRecovering) {
-      desiredSpeed = Math.min(desiredSpeed, 11.0); // Slow down to recover composure cleanly
+      desiredSpeed = Math.min(desiredSpeed, 22.0); // Recover composure cleanly (~79 km/h)
     }
 
     const speedDiff = desiredSpeed - this.forwardSpeed;
@@ -535,7 +534,13 @@ export class AIOpponent {
   private integratePosition(dt: number): void {
     // Yaw rate from bicycle model approximation tuned with peak tier gripFactor: yawRate = (v / wheelbase) * tan(steer) * gripFactor
     const wheelbase = 2.65;
-    const effectiveYawRate = (this.forwardSpeed / wheelbase) * Math.tan(this.steeringAngle) * this.tuning.gripFactor;
+    let effectiveYawRate = (this.forwardSpeed / wheelbase) * Math.tan(this.steeringAngle) * this.tuning.gripFactor;
+
+    // Cap maximum yaw rate based on tire mechanical grip and aerodynamic downforce
+    const maxLatG = (this.profile.normalLateralGrip || 12.0) * this.tuning.gripFactor;
+    const maxYawRate = maxLatG / Math.max(8.0, this.forwardSpeed);
+    effectiveYawRate = Math.max(-maxYawRate, Math.min(maxYawRate, effectiveYawRate));
+
     this.yawAngle += effectiveYawRate * dt;
 
     // Normalize yaw
@@ -571,9 +576,8 @@ export class AIOpponent {
     toCar.y = 0;
     const distToCenter = toCar.length();
 
-    // Corner-adaptive boundary containment based on local curvature
-    const curv = closestWp.curvatureDeg || 0;
-    const maxRoadWidth = Math.max(4.5, Math.min(6.5, 6.5 - curv * 0.35));
+    // Road half-width containment (road width is 13.0m - 14.8m)
+    const maxRoadWidth = 6.2;
     if (distToCenter > maxRoadWidth && distToCenter > 0.001) {
       // Gently push back inside
       const dirToCenter = toCar.scale(-1.0 / distToCenter);
@@ -581,8 +585,8 @@ export class AIOpponent {
       this.position.x += dirToCenter.x * correction;
       this.position.z += dirToCenter.z * correction;
 
-      // Dampen forward speed on wall brush
-      this.forwardSpeed *= 0.95;
+      // Gentle speed dampening for brushing outside barrier
+      this.forwardSpeed *= 0.985;
     }
   }
 

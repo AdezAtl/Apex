@@ -35,6 +35,7 @@ import { CareerResultsScreen } from '../ui/CareerResultsScreen';
 import { CareerEventDefinition } from '../career/CareerConfig';
 import { getCircuitById } from '../tracks/TrackRegistry';
 import { MultiplayerManager } from '../multiplayer/MultiplayerManager';
+import { requestFullscreenIfMobile } from '../utils/Fullscreen';
 
 export class Game {
   public sceneManager: SceneManager;
@@ -98,6 +99,7 @@ export class Game {
   private cameraModeElement: HTMLElement | null = null;
   private settingsReturnState: GameState = GameState.MainMenu;
   private garageReturnState: GameState = GameState.MainMenu;
+  private prevPlayerThrottle: number = 0;
 
   constructor() {
     this.loadingScreen = new LoadingScreen();
@@ -114,7 +116,8 @@ export class Game {
       settings.masterVolume,
       settings.engineVolume,
       settings.effectsVolume,
-      settings.isMuted
+      settings.isMuted,
+      settings.musicVolume
     );
     this.driftScoringManager = new DriftScoringManager();
     this.aiManager = new AIManager(this.sceneManager.scene);
@@ -161,6 +164,12 @@ export class Game {
       onStartRaceCountdown: async (circuit, mode, lapCount) => {
         this.soundManager.playUISelect();
         await this.ensureCircuitLoaded(circuit);
+        const myLobbyEntry = this.multiplayerManager.connectedPlayers.find(
+          p => p.id === this.multiplayerManager.selfPlayerId
+        );
+        if (myLobbyEntry) {
+          await this.syncSelectedVehicle(myLobbyEntry.vehicleId);
+        }
 
         const mpEvent: RaceEventConfig = {
           id: `mp_${circuit.id}_${mode}`,
@@ -344,6 +353,10 @@ export class Game {
         this.settingsManager.setEffectsVolume(vol);
         this.soundManager.setEffectsVolume(vol);
       },
+      onMusicVolumeChange: (vol) => {
+        this.settingsManager.setMusicVolume(vol);
+        this.soundManager.setMusicVolume(vol);
+      },
       onMuteToggle: (isMuted) => {
         this.settingsManager.setMuted(isMuted);
         this.soundManager.setMuted(isMuted);
@@ -471,9 +484,10 @@ export class Game {
         this.setGameState(GameState.MainMenu);
       }, 300);
 
-      // Window-level user gesture unlock for Web Audio
+      // Window-level user gesture unlock for Web Audio & Mobile Fullscreen
       const unlockAudio = () => {
         this.soundManager.initContext();
+        requestFullscreenIfMobile();
         window.removeEventListener('pointerdown', unlockAudio);
         window.removeEventListener('keydown', unlockAudio);
       };
@@ -570,6 +584,7 @@ export class Game {
                 steerLeft: false,
                 steerRight: false,
                 handbrake: false,
+                boost: false,
                 reset: false,
                 toggleCamera: false,
                 pause: false,
@@ -713,6 +728,36 @@ export class Game {
               true
             );
 
+            // Aerodynamic high-speed wind rush
+            this.soundManager.updateWindRush(this.vehicleController.forwardSpeed, true);
+
+            // Turbo Blow-Off Valve (BOV) flutter on high-RPM throttle lift
+            const currThrottle = this.vehicleController.throttleLoad;
+            if (this.prevPlayerThrottle > 0.65 && currThrottle < 0.15 && this.vehicleController.engineRpm > 4200) {
+              this.soundManager.playTurboBlowOff(Math.min(1.2, this.vehicleController.engineRpm / 5500));
+            }
+            this.prevPlayerThrottle = currThrottle;
+
+            // Spatial AI Opponent 3D Engine Audio
+            if (this.aiManager.isEnabled && this.aiManager.opponents.length > 0) {
+              this.soundManager.updateOpponentsAudio(
+                {
+                  x: this.vehicleController.position.x,
+                  z: this.vehicleController.position.z,
+                  yaw: this.vehicleController.yawAngle,
+                },
+                this.aiManager.opponents.map((o) => ({
+                  position: { x: o.position.x, z: o.position.z },
+                  forwardSpeed: o.forwardSpeed,
+                })),
+                true
+              );
+            }
+
+            // Dynamic music intensity scaling with speed
+            const speedRatio = Math.min(1.0, (this.vehicleController.forwardSpeed * 3.6) / 260.0);
+            this.soundManager.setMusicIntensity(0.4 + speedRatio * 0.6);
+
             // Gear shift acoustic trigger
             if (this.vehicleController.didShiftThisFrame) {
               this.soundManager.playGearShift(this.vehicleController.currentGear);
@@ -760,6 +805,8 @@ export class Game {
             // Simulation is frozen. Suppress audio & tire emission.
             this.soundManager.updateEngine(0, 0, 0, false);
             this.soundManager.updateTires(0, 0, 0, false);
+            this.soundManager.updateWindRush(0, false);
+            this.soundManager.updateOpponentsAudio({ x: 0, z: 0, yaw: 0 }, [], false);
             this.tireFeedbackManager?.update(dt, this.vehicle, this.vehicleController, false);
             if (this.multiplayerManager?.isActive) {
               this.multiplayerManager.update(dt, this.vehicleController, {
@@ -768,6 +815,7 @@ export class Game {
                 steerLeft: false,
                 steerRight: false,
                 handbrake: false,
+                boost: false,
                 reset: false,
                 toggleCamera: false,
                 pause: true,
@@ -779,6 +827,8 @@ export class Game {
             // Vehicle smoothly rolls to a stop with gentle engine idle
             this.soundManager.updateEngine(950, 0, this.vehicleController.forwardSpeed * 3.6, true);
             this.soundManager.updateTires(0, 0, 0, false);
+            this.soundManager.updateWindRush(0, false);
+            this.soundManager.updateOpponentsAudio({ x: 0, z: 0, yaw: 0 }, [], false);
             if (Math.abs(this.vehicleController.forwardSpeed) > 0.05) {
               this.vehicleController.forwardSpeed *= Math.max(0, 1.0 - 2.5 * dt);
               this.vehicleController.lateralSpeed *= Math.max(0, 1.0 - 4.0 * dt);
@@ -872,6 +922,29 @@ export class Game {
     this.state = newState;
     this.isPaused = newState === GameState.Paused;
     this.isRacing = newState === GameState.Racing;
+
+    // Coordinate on-screen touch controls: strictly only show during Countdown or Racing
+    const isInRace = newState === GameState.Racing || newState === GameState.Countdown;
+    this.inputManager.setInRace(isInRace);
+
+    // Coordinate procedural synthwave background music transitions
+    if (
+      newState === GameState.MainMenu ||
+      newState === GameState.EventSelect ||
+      newState === GameState.Garage ||
+      newState === GameState.CareerHub ||
+      newState === GameState.Settings
+    ) {
+      this.soundManager.startMusic('menu');
+      this.soundManager.setMusicPaused(false);
+    } else if (newState === GameState.Countdown || newState === GameState.Racing) {
+      this.soundManager.startMusic('race');
+      this.soundManager.setMusicPaused(false);
+    } else if (newState === GameState.Paused) {
+      this.soundManager.setMusicPaused(true);
+    } else if (newState === GameState.Finished || newState === GameState.CareerResults) {
+      this.soundManager.stopMusic(0.8);
+    }
 
     // Clean up showroom when leaving Garage mode or CareerHub
     const wasInShowroom = previousState === GameState.Garage || previousState === GameState.CareerHub;
@@ -1165,16 +1238,19 @@ export class Game {
   }
 
   public startCountdown(event?: RaceEventConfig, difficulty?: AIDifficulty): void {
+    requestFullscreenIfMobile();
     this.clearCountdownTimeouts();
 
     if (event) {
       this.currentEvent = event;
     }
 
-    this.aiManager.setupGrid(this.currentEvent, difficulty);
-
-    this.checkpointManager.setActiveEvent(this.currentEvent);
-    this.driftScoringManager.reset();
+if (this.multiplayerManager?.isActive) {
+      this.aiManager.isEnabled = false;
+      this.aiManager.hideOpponents();
+    } else {
+      this.aiManager.setupGrid(this.currentEvent, difficulty);
+    }
 
     // Ensure active vehicle handling profile is synchronized with selected vehicle
     const selectedId = this.settingsManager.getSelectedVehicleId();

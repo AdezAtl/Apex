@@ -1,3 +1,5 @@
+import { MusicSynth, MusicTrackMode } from './MusicSynth';
+
 export class SoundManager {
   private ctx: AudioContext | null = null;
   private isInitialized: boolean = false;
@@ -6,11 +8,16 @@ export class SoundManager {
   private masterGain: GainNode | null = null;
   private engineBusGain: GainNode | null = null;
   private effectsBusGain: GainNode | null = null;
+  private musicBusGain: GainNode | null = null;
+
+  // Music Synth Engine
+  private musicSynth: MusicSynth | null = null;
 
   // Volume States (0.0 to 1.0)
   private masterVolume: number = 0.8;
   private engineVolume: number = 0.8;
   private effectsVolume: number = 0.8;
+  private musicVolume: number = 0.7;
   private isMuted: boolean = false;
 
   // Continuous Engine Synthesizer Nodes
@@ -25,22 +32,42 @@ export class SoundManager {
   private tireFilter: BiquadFilterNode | null = null;
   private tireGain: GainNode | null = null;
 
+  // Continuous High-Speed Aerodynamic Wind Rush Nodes
+  private windNoiseSource: AudioBufferSourceNode | null = null;
+  private windFilter: BiquadFilterNode | null = null;
+  private windGain: GainNode | null = null;
+
+  // Spatial Opponent Engine Channels (up to 3 AI cars)
+  private opponentSynths: {
+    osc: OscillatorNode;
+    filter: BiquadFilterNode;
+    panner: StereoPannerNode;
+    gain: GainNode;
+  }[] = [];
+
+  // Procedural Police Siren Nodes
+  private sirenOsc: OscillatorNode | null = null;
+  private sirenGain: GainNode | null = null;
+
   // Shared Noise Buffer for SFX
   private noiseBuffer: AudioBuffer | null = null;
 
   // Cooldown Debouncers
   private lastShiftTime: number = 0;
   private lastCollisionTime: number = 0;
+  private lastBlowOffTime: number = 0;
 
   constructor(
     initialMasterVolume: number = 0.8,
     initialEngineVolume: number = 0.8,
     initialEffectsVolume: number = 0.8,
-    initialMuted: boolean = false
+    initialMuted: boolean = false,
+    initialMusicVolume: number = 0.7
   ) {
     this.masterVolume = initialMasterVolume;
     this.engineVolume = initialEngineVolume;
     this.effectsVolume = initialEffectsVolume;
+    this.musicVolume = initialMusicVolume;
     this.isMuted = initialMuted;
   }
 
@@ -80,6 +107,16 @@ export class SoundManager {
       this.effectsBusGain.gain.setValueAtTime(this.effectsVolume, this.ctx.currentTime);
       this.effectsBusGain.connect(this.masterGain);
 
+      // Music Sub-Bus
+      this.musicBusGain = this.ctx.createGain();
+      this.musicBusGain.gain.setValueAtTime(this.musicVolume, this.ctx.currentTime);
+      this.musicBusGain.connect(this.masterGain);
+
+      // Initialize Procedural Synthwave Music Engine
+      this.musicSynth = new MusicSynth(this.ctx, this.musicBusGain);
+      this.musicSynth.setVolume(this.musicVolume);
+      this.musicSynth.setMuted(this.isMuted);
+
       // Precompute 2-second white noise buffer for tire squeal and transmission pops
       const sampleRate = this.ctx.sampleRate;
       const bufferLength = sampleRate * 2;
@@ -92,6 +129,9 @@ export class SoundManager {
       // Initialize persistent continuous synthesizers
       this.initEngineSynth();
       this.initTireSynth();
+      this.initWindSynth();
+      this.initOpponentSynths();
+      this.initSirenSynth();
 
       this.isInitialized = true;
     } catch (e) {
@@ -180,6 +220,109 @@ export class SoundManager {
       this.tireNoiseSource.start(now);
     } catch (e) {
       console.warn('[SoundManager] Error initializing tire squeal synth:', e);
+    }
+  }
+
+  /**
+   * Continuous aerodynamic high-speed wind rush synthesizer using lowpass filtered noise.
+   */
+  private initWindSynth(): void {
+    if (!this.ctx || !this.effectsBusGain || !this.noiseBuffer) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      this.windNoiseSource = this.ctx.createBufferSource();
+      this.windNoiseSource.buffer = this.noiseBuffer;
+      this.windNoiseSource.loop = true;
+
+      this.windFilter = this.ctx.createBiquadFilter();
+      this.windFilter.type = 'lowpass';
+      this.windFilter.frequency.setValueAtTime(320, now);
+
+      this.windGain = this.ctx.createGain();
+      this.windGain.gain.setValueAtTime(0.0001, now);
+
+      this.windNoiseSource.connect(this.windFilter);
+      this.windFilter.connect(this.windGain);
+      this.windGain.connect(this.effectsBusGain);
+
+      this.windNoiseSource.start(now);
+    } catch (e) {
+      console.warn('[SoundManager] Error initializing wind rush synth:', e);
+    }
+  }
+
+  /**
+   * Spatial 3D AI opponent engine synthesizers (up to 3 concurrent channels).
+   */
+  private initOpponentSynths(): void {
+    if (!this.ctx || !this.engineBusGain) return;
+
+    try {
+      this.opponentSynths = [];
+      const hasStereoPanner = typeof this.ctx.createStereoPanner === 'function';
+
+      for (let i = 0; i < 3; i++) {
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(55, now);
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(350, now);
+        filter.Q.setValueAtTime(2.2, now);
+
+        const panner = hasStereoPanner ? this.ctx.createStereoPanner() : null;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, now);
+
+        osc.connect(filter);
+        if (panner) {
+          filter.connect(panner);
+          panner.connect(gain);
+        } else {
+          filter.connect(gain);
+        }
+        gain.connect(this.engineBusGain);
+
+        osc.start(now);
+        if (panner) {
+          this.opponentSynths.push({ osc, filter, panner, gain });
+        }
+      }
+    } catch (e) {
+      console.warn('[SoundManager] Error initializing spatial opponent synths:', e);
+    }
+  }
+
+  /**
+   * Procedural police pursuit siren synthesizer (dual-tone wail & yelp).
+   */
+  private initSirenSynth(): void {
+    if (!this.ctx || !this.effectsBusGain) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      this.sirenOsc = this.ctx.createOscillator();
+      this.sirenGain = this.ctx.createGain();
+
+      this.sirenOsc.type = 'sawtooth';
+      this.sirenOsc.frequency.setValueAtTime(740, now);
+
+      const sirenFilter = this.ctx.createBiquadFilter();
+      sirenFilter.type = 'lowpass';
+      sirenFilter.frequency.setValueAtTime(1400, now);
+
+      this.sirenGain.gain.setValueAtTime(0.0001, now);
+
+      this.sirenOsc.connect(sirenFilter);
+      sirenFilter.connect(this.sirenGain);
+      this.sirenGain.connect(this.effectsBusGain);
+
+      this.sirenOsc.start(now);
+    } catch (e) {
+      console.warn('[SoundManager] Error initializing police siren synth:', e);
     }
   }
 
@@ -274,9 +417,168 @@ export class SoundManager {
     } catch {}
   }
 
+  /**
+   * Updates procedural aerodynamic wind rush per frame based on forward velocity.
+   * Activates above 120 km/h and scales smoothly up to 350+ km/h.
+   */
+  public updateWindRush(forwardSpeedMps: number, isActive: boolean): void {
+    if (!this.isInitialized || !this.ctx || !this.windGain || !this.windFilter) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const speedKmh = Math.abs(forwardSpeedMps) * 3.6;
+
+      if (!isActive || speedKmh < 110) {
+        this.windGain.gain.setTargetAtTime(0.0001, now, 0.1);
+        return;
+      }
+
+      // Wind rush scales from 110 km/h up to 340 km/h
+      const factor = Math.min(1.0, (speedKmh - 110) / 210.0);
+      const targetGain = factor * 0.26 * (this.isMuted ? 0 : 1.0);
+      const targetCutoff = 350 + Math.pow(factor, 1.4) * 2600;
+
+      this.windGain.gain.setTargetAtTime(targetGain, now, 0.08);
+      this.windFilter.frequency.setTargetAtTime(targetCutoff, now, 0.08);
+    } catch {}
+  }
+
+  /**
+   * Updates 3D spatial engine roar for nearby AI opponents.
+   * Uses relative position and vehicle heading for stereo panning and distance attenuation.
+   */
+  public updateOpponentsAudio(
+    playerPos: { x: number; z: number; yaw: number },
+    opponents: { position: { x: number; z: number }; forwardSpeed: number }[],
+    isActive: boolean
+  ): void {
+    if (!this.isInitialized || !this.ctx || this.opponentSynths.length === 0) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      if (!isActive) {
+        for (const ch of this.opponentSynths) {
+          ch.gain.gain.setTargetAtTime(0.0001, now, 0.06);
+        }
+        return;
+      }
+
+      for (let i = 0; i < this.opponentSynths.length; i++) {
+        const ch = this.opponentSynths[i];
+        const opp = opponents[i];
+
+        if (!opp) {
+          ch.gain.gain.setTargetAtTime(0.0001, now, 0.06);
+          continue;
+        }
+
+        const dx = opp.position.x - playerPos.x;
+        const dz = opp.position.z - playerPos.z;
+        const dist = Math.hypot(dx, dz);
+
+        // Audible radius: within 35m
+        if (dist > 35.0) {
+          ch.gain.gain.setTargetAtTime(0.0001, now, 0.08);
+          continue;
+        }
+
+        // Relative lateral angle for stereo panning
+        const cosY = Math.cos(-playerPos.yaw);
+        const sinY = Math.sin(-playerPos.yaw);
+        const localX = dx * cosY - dz * sinY;
+
+        const pan = Math.max(-1.0, Math.min(1.0, localX / 8.5));
+        ch.panner.pan.setTargetAtTime(pan, now, 0.04);
+
+        // Attenuation with distance (quadratic falloff)
+        const distFactor = Math.max(0, 1.0 - dist / 35.0);
+        const targetGain = distFactor * distFactor * 0.28 * (this.isMuted ? 0 : 1.0);
+        ch.gain.gain.setTargetAtTime(targetGain, now, 0.04);
+
+        // Frequency scales with forward speed
+        const speed = Math.max(0, opp.forwardSpeed);
+        const freq = 50 + Math.min(280, speed * 4.2);
+        ch.osc.frequency.setTargetAtTime(freq, now, 0.04);
+
+        const cutoff = 280 + Math.min(2200, speed * 26);
+        ch.filter.frequency.setTargetAtTime(cutoff, now, 0.04);
+      }
+    } catch {}
+  }
+
+  /**
+   * Updates police siren volume and frequency modulation based on distance to pursuing unit.
+   * Modulates dual-tone wail frequency and applies realistic atmospheric distance falloff.
+   */
+  public updatePoliceSiren(distMeters: number, isPursuitActive: boolean): void {
+    if (!this.isInitialized || !this.ctx || !this.sirenOsc || !this.sirenGain) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      if (!isPursuitActive || distMeters > 95.0) {
+        this.sirenGain.gain.setTargetAtTime(0.0001, now, 0.12);
+        return;
+      }
+
+      // Rapid dual-tone emergency sweep: cycles 740 Hz to 1080 Hz
+      const sweepRate = distMeters < 20.0 ? 2.2 : 1.4; // Yelps faster when tailing close
+      const cycle = Math.sin(now * sweepRate * Math.PI * 2);
+      const targetFreq = 880 + cycle * 180;
+      this.sirenOsc.frequency.setTargetAtTime(targetFreq, now, 0.04);
+
+      // Distance attenuation: loud within 15m, smoothly dropping to zero at 95m
+      const distFactor = Math.max(0, 1.0 - distMeters / 95.0);
+      const targetGain = Math.pow(distFactor, 1.4) * 0.22 * (this.isMuted ? 0 : 1.0);
+      this.sirenGain.gain.setTargetAtTime(targetGain, now, 0.06);
+    } catch {}
+  }
+
   // ==========================================
   // DISCRETE RACING & VEHICLE SFX
   // ==========================================
+
+  /**
+   * Multi-stage compressor surge turbo flutter ('stututu') on high-RPM throttle lift.
+   */
+  public playTurboBlowOff(intensity: number = 1.0): void {
+    this.initContext();
+    if (!this.ctx || !this.effectsBusGain || this.isMuted || this.effectsVolume <= 0.001 || !this.noiseBuffer) return;
+
+    const nowMs = performance.now();
+    if (nowMs - this.lastBlowOffTime < 500) return; // Debounce
+    this.lastBlowOffTime = nowMs;
+
+    try {
+      const now = this.ctx.currentTime;
+      const flutterCount = 4;
+      const baseFreq = 3200;
+
+      for (let i = 0; i < flutterCount; i++) {
+        const pulseTime = now + i * 0.062;
+        const pulseDuration = 0.052;
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(baseFreq - i * 320, pulseTime);
+        filter.Q.setValueAtTime(4.2 + i * 0.7, pulseTime);
+
+        const gain = this.ctx.createGain();
+        const pulseGain = 0.22 * Math.pow(0.70, i) * Math.min(1.2, intensity);
+        gain.gain.setValueAtTime(pulseGain, pulseTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, pulseTime + pulseDuration);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.effectsBusGain);
+
+        noise.start(pulseTime);
+        noise.stop(pulseTime + pulseDuration + 0.01);
+      }
+    } catch {}
+  }
 
   /**
    * Mechanical pneumatic shift pop on gear change.
@@ -621,6 +923,72 @@ export class SoundManager {
     } catch {}
   }
 
+  /**
+   * Urgent warning pulse for final 5 seconds before car elimination.
+   */
+  public playEliminationWarning(): void {
+    this.initContext();
+    if (!this.ctx || !this.effectsBusGain || this.isMuted || this.effectsVolume <= 0.001) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(880, now);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc.connect(gain);
+      gain.connect(this.effectsBusGain);
+      osc.start(now);
+      osc.stop(now + 0.14);
+    } catch {}
+  }
+
+  /**
+   * Dramatic elimination drop chord when a car is knocked out.
+   */
+  public playEliminationChime(isPlayerEliminated: boolean = false): void {
+    this.initContext();
+    if (!this.ctx || !this.effectsBusGain || this.isMuted || this.effectsVolume <= 0.001) return;
+    try {
+      const now = this.ctx.currentTime;
+      const baseFreq = isPlayerEliminated ? 95 : 190;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.45, now + 0.7);
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+      osc.connect(gain);
+      gain.connect(this.effectsBusGain);
+      osc.start(now);
+      osc.stop(now + 0.8);
+    } catch {}
+  }
+
+  /**
+   * Electronic radar chime and camera shutter snap when speeding past a speed trap.
+   */
+  public playRadarFlash(_speedKmh: number = 0): void {
+    this.initContext();
+    if (!this.ctx || !this.effectsBusGain || this.isMuted || this.effectsVolume <= 0.001) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1450, now);
+      osc.frequency.exponentialRampToValueAtTime(2400, now + 0.14);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      osc.connect(gain);
+      gain.connect(this.effectsBusGain);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } catch {}
+  }
+
   // ==========================================
   // VOLUME & BUS CONTROLS
   // ==========================================
@@ -659,11 +1027,53 @@ export class SoundManager {
     return this.effectsVolume;
   }
 
+  public setMusicVolume(vol: number): void {
+    this.musicVolume = Math.max(0, Math.min(1.0, vol));
+    if (this.musicBusGain && this.ctx) {
+      this.musicBusGain.gain.setValueAtTime(this.musicVolume, this.ctx.currentTime);
+    }
+    if (this.musicSynth) {
+      this.musicSynth.setVolume(this.musicVolume);
+    }
+  }
+
+  public getMusicVolume(): number {
+    return this.musicVolume;
+  }
+
+  public startMusic(mode: MusicTrackMode): void {
+    this.initContext();
+    if (this.musicSynth) {
+      this.musicSynth.startTrack(mode);
+    }
+  }
+
+  public stopMusic(fadeTime: number = 0.2): void {
+    if (this.musicSynth) {
+      this.musicSynth.stopTrack(fadeTime);
+    }
+  }
+
+  public setMusicIntensity(intensity: number): void {
+    if (this.musicSynth) {
+      this.musicSynth.setIntensity(intensity);
+    }
+  }
+
+  public setMusicPaused(isPaused: boolean): void {
+    if (this.musicSynth) {
+      this.musicSynth.setPauseFilter(isPaused);
+    }
+  }
+
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
     if (this.masterGain && this.ctx) {
       const effective = this.isMuted ? 0 : this.masterVolume;
       this.masterGain.gain.setValueAtTime(effective, this.ctx.currentTime);
+    }
+    if (this.musicSynth) {
+      this.musicSynth.setMuted(this.isMuted);
     }
   }
 

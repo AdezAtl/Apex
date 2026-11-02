@@ -365,7 +365,8 @@ export class Vehicle {
 
   public updateWheels(spinAngle: number, steerAngle: number): void {
     // Model is oriented along +Z forward; visual wheel yaw matches driver steering angle
-    const visualSteer = steerAngle;
+    // Invert visual steering when modelContainer is rotated by Math.PI (180 deg) so tires point in true steering direction
+    const visualSteer = (Math.abs(this.yawOffset - Math.PI) < 0.1) ? -steerAngle : steerAngle;
     const visualSpin = (Math.abs(this.yawOffset - Math.PI) < 0.1) ? -spinAngle : spinAngle;
 
     // Front wheels: spin around local pitch (X) and steer around local yaw (Y)
