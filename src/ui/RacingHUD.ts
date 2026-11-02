@@ -176,6 +176,7 @@ export class RacingHUD {
     // Speed in KM/H directly from vehicle velocity
     if (this.speedElement) {
       this.speedElement.textContent = String(telemetry.speedKmh);
+      this.speedElement.classList.toggle('nitro-boost-flare', !!telemetry.isBoosting);
     }
 
     // Gear indicator

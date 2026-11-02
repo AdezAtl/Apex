@@ -12,6 +12,7 @@
   "dependencies": {
     "@babylonjs/core": "^7.54.0",
     "@babylonjs/loaders": "^7.54.0",
+    "peerjs": "^1.5.5",
     "ws": "^8.22.0"
   },
   "devDependencies": {

@@ -3,6 +3,7 @@ import {
   Scene,
   ArcRotateCamera,
   Vector3,
+  Vector2,
   HemisphericLight,
   DirectionalLight,
   ShadowGenerator,
@@ -45,6 +46,7 @@ export class SceneManager {
   public showroomRimLight: DirectionalLight | null = null;
   public isGarageMode: boolean = false;
   public isUserInteractingWithCamera: boolean = false;
+  public garageBaseTarget: Vector3 = Vector3.Zero();
 
   constructor(canvasId: string = 'renderCanvas') {
     const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
@@ -137,12 +139,15 @@ export class SceneManager {
     if (mode === 'orbit') {
       this.scene.activeCamera = this.orbitCamera;
       this.orbitCamera.attachControl(this.canvas, true);
-    } else if (this.chaseCamera) {
-      this.scene.activeCamera = this.chaseCamera.camera;
-      this.orbitCamera.detachControl();
-      if (mode === 'chase' || mode === 'close' || mode === 'wide') {
-        this.chaseCamera.clearCinematic();
-        this.chaseCamera.setMode(mode);
+    } else {
+      this.orbitCamera.targetScreenOffset = Vector2.Zero();
+      if (this.chaseCamera) {
+        this.scene.activeCamera = this.chaseCamera.camera;
+        this.orbitCamera.detachControl();
+        if (mode === 'chase' || mode === 'close' || mode === 'wide') {
+          this.chaseCamera.clearCinematic();
+          this.chaseCamera.setMode(mode);
+        }
       }
     }
   }
@@ -359,6 +364,7 @@ export class SceneManager {
     carPosition: Vector3
   ): void {
     this.isGarageMode = true;
+    this.garageBaseTarget = carPosition.clone();
 
     // Position turntable platform exactly beneath car
     if (this.showroomPlatform) {
@@ -388,15 +394,30 @@ export class SceneManager {
 
     // Set up showroom orbit camera with constrained pitch to prevent clipping through turntable
     this.setCameraMode('orbit');
-    this.orbitCamera.setTarget(carPosition.add(new Vector3(0, 0.75, 0)));
-    this.orbitCamera.alpha = 2.35; // Front 3/4 showcase angle highlighting nose, headlights, and wheels
+    this.orbitCamera.alpha = 2.45; // Front 3/4 showcase angle highlighting nose, headlights, and wheels
     this.orbitCamera.beta = 1.25;
-    this.orbitCamera.radius = 5.5;
+    this.orbitCamera.radius = 5.8;
     this.orbitCamera.lowerRadiusLimit = 3.2;
     this.orbitCamera.upperRadiusLimit = 8.5;
     this.orbitCamera.lowerBetaLimit = 0.35;
     this.orbitCamera.upperBetaLimit = Math.PI / 2 - 0.05; // Never go below ground
     this.orbitCamera.attachControl(this.canvas, true);
+
+    this.applyGarageCameraTarget();
+  }
+
+  /**
+   * Positions camera target offset along screen-space horizontal vector,
+   * cleanly shifting the 3D car model to the left side of the showroom viewport
+   * so it remains completely unobstructed by right-side specs and workshop cards.
+   */
+  public applyGarageCameraTarget(): void {
+    if (!this.isGarageMode || this.currentCameraMode !== 'orbit') return;
+    const isSmall = typeof window !== 'undefined' && (window.innerWidth < 768 || window.innerHeight < 550);
+    const shiftX = isSmall ? -0.85 : -1.55;
+    const shiftY = isSmall ? 0.08 : 0.15;
+    this.orbitCamera.targetScreenOffset = new Vector2(shiftX, shiftY);
+    this.orbitCamera.setTarget(this.garageBaseTarget.add(new Vector3(0, 0.70, 0)), false, true);
   }
 
   /**
@@ -404,6 +425,7 @@ export class SceneManager {
    */
   public disableGarageShowroom(trackRoot: TransformNode, checkpointRoot: TransformNode | null): void {
     this.isGarageMode = false;
+    this.orbitCamera.targetScreenOffset = Vector2.Zero();
 
     // Disable showroom studio elements
     this.showroomPlatform?.setEnabled(false);
@@ -466,11 +488,15 @@ export class SceneManager {
   }
 
   /**
-   * Updates garage showroom camera with gentle auto-rotation when user is not manually dragging
+   * Updates garage showroom camera with smooth rotation:
+   * supports gamepad right stick manual turntable rotation and gentle auto-rotation.
    */
-  public updateGarageCamera(dt: number): void {
+  public updateGarageCamera(dt: number, manualStickYawDelta: number = 0): void {
     if (this.isGarageMode && this.currentCameraMode === 'orbit') {
-      if (!this.isUserInteractingWithCamera) {
+      if (Math.abs(manualStickYawDelta) > 0.08) {
+        this.orbitCamera.alpha += manualStickYawDelta * 2.4 * dt;
+        this.isUserInteractingWithCamera = true;
+      } else if (!this.isUserInteractingWithCamera) {
         this.orbitCamera.alpha += 0.04 * dt;
       }
     }
@@ -596,6 +622,9 @@ export class SceneManager {
 
   private onResize = (): void => {
     this.engine.resize();
+    if (this.isGarageMode) {
+      this.applyGarageCameraTarget();
+    }
   };
 
   public focusCameraOn(targetPosition: Vector3, distance: number = 7.0): void {

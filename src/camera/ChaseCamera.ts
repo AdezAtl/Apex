@@ -160,9 +160,9 @@ export class ChaseCamera {
     this.currentTarget = Vector3.Lerp(this.currentTarget, idealTarget, targetAlpha);
 
     // 5. SPEED-BASED DYNAMIC FOV & NITRO BOOST KICK
-    const boostFovBonus = isBoosting ? 0.08 : 0.0;
+    const boostFovBonus = isBoosting ? 0.18 : 0.0;
     const targetFov = this.currentBaseFov + speedRatio * (this.currentMaxFov - this.currentBaseFov) + boostFovBonus;
-    const fovAlpha = 1.0 - Math.exp(-(this.config.fovDamping + (isBoosting ? 3.0 : 0.0)) * clampedDt);
+    const fovAlpha = 1.0 - Math.exp(-(this.config.fovDamping + (isBoosting ? 5.0 : 0.0)) * clampedDt);
     this.camera.fov = Scalar.Lerp(this.camera.fov, targetFov, fovAlpha);
 
     // 6. CAMERA SHAKE ON IMPACTS

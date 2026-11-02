@@ -311,10 +311,17 @@ export class AIOpponent {
     // 1. Update track progress and lap counter
     this.trackDistance = waypointManager.getTrackDistance(this.position);
 
-    // Detect lap completion: sudden wrap-around from end of lap to start
+    // If starting on grid behind start line, clamp initial trackDistance to 0 so it doesn't wrap to trackLength
+    if (this.raceTimer < 4.0 && this.trackDistance > waypointManager.trackLength * 0.80) {
+      this.trackDistance = 0;
+    }
+
+    // Detect lap completion: sudden wrap-around from end of lap to start.
+    // Strictly gated by raceTimer > 12.0 to prevent false lap trigger on cars starting behind the start line.
     if (
-      this.prevTrackDist > waypointManager.trackLength * 0.88 &&
-      this.trackDistance < waypointManager.trackLength * 0.15
+      this.raceTimer > 12.0 &&
+      this.prevTrackDist > waypointManager.trackLength * 0.80 &&
+      this.trackDistance < waypointManager.trackLength * 0.20
     ) {
       this.lapCount++;
     }

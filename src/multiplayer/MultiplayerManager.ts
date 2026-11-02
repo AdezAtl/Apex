@@ -222,13 +222,18 @@ export class MultiplayerManager {
   private async handleHostRoom(
     roomConfig: Partial<RoomConfig>,
     player: { name: string; vehicleId: string; vehicleName: string; paintId: string },
-    hostAddress: string
+    hostAddress: string,
+    isP2P: boolean = true
   ): Promise<void> {
     try {
-      await this.client.connect(hostAddress);
-      this.client.createRoom(roomConfig, player);
+      if (isP2P) {
+        await this.client.createP2PHostRoom(hostAddress, roomConfig, player);
+      } else {
+        await this.client.connect(hostAddress);
+        this.client.createRoom(roomConfig, player);
+      }
     } catch (err: any) {
-      this.lobbyUI.setStatus(err.message || 'Failed to start LAN host server', 'error');
+      this.lobbyUI.setStatus(err.message || 'Failed to start multiplayer room', 'error');
     }
   }
 
@@ -240,7 +245,7 @@ export class MultiplayerManager {
       await this.client.connect(hostAddress);
       this.client.joinRoom(player);
     } catch (err: any) {
-      this.lobbyUI.setStatus(err.message || 'Failed to reach LAN host', 'error');
+      this.lobbyUI.setStatus(err.message || 'Failed to reach multiplayer host', 'error');
     }
   }
 

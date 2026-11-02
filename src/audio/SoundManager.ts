@@ -538,36 +538,58 @@ export class SoundManager {
   // ==========================================
 
   /**
-   * Multi-stage compressor surge turbo flutter ('stututu') on high-RPM throttle lift.
+   * Authentic multi-stage compressor surge turbo flutter ('stututu') on throttle lift.
+   * Features high-pressure blow-off crack followed by 6 resonant acoustic chop pulses.
    */
   public playTurboBlowOff(intensity: number = 1.0): void {
     this.initContext();
     if (!this.ctx || !this.effectsBusGain || this.isMuted || this.effectsVolume <= 0.001 || !this.noiseBuffer) return;
 
     const nowMs = performance.now();
-    if (nowMs - this.lastBlowOffTime < 500) return; // Debounce
+    if (nowMs - this.lastBlowOffTime < 420) return; // Debounce
     this.lastBlowOffTime = nowMs;
 
     try {
       const now = this.ctx.currentTime;
-      const flutterCount = 4;
-      const baseFreq = 3200;
+      const flutterCount = 6;
+      const baseFreq = 2900;
+      const effectiveIntensity = Math.max(0.6, Math.min(1.5, intensity));
 
+      // 1. Initial High-Pressure Vent Psssh Crack
+      const ventNoise = this.ctx.createBufferSource();
+      ventNoise.buffer = this.noiseBuffer;
+      const ventFilter = this.ctx.createBiquadFilter();
+      ventFilter.type = 'bandpass';
+      ventFilter.frequency.setValueAtTime(3600, now);
+      ventFilter.Q.setValueAtTime(3.5, now);
+      const ventGain = this.ctx.createGain();
+      ventGain.gain.setValueAtTime(0.55 * effectiveIntensity, now);
+      ventGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      ventNoise.connect(ventFilter);
+      ventFilter.connect(ventGain);
+      ventGain.connect(this.effectsBusGain);
+      ventNoise.start(now);
+      ventNoise.stop(now + 0.1);
+
+      // 2. Rhythmic Compressor Flutter Chop ('stu-tu-tu-tu-tu-tsh')
       for (let i = 0; i < flutterCount; i++) {
-        const pulseTime = now + i * 0.062;
+        const pulseTime = now + 0.045 + i * 0.054;
         const pulseDuration = 0.052;
+        const pulseFreq = Math.max(950, baseFreq - i * 290);
 
+        // Filtered white noise body
         const noise = this.ctx.createBufferSource();
         noise.buffer = this.noiseBuffer;
 
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(baseFreq - i * 320, pulseTime);
-        filter.Q.setValueAtTime(4.2 + i * 0.7, pulseTime);
+        filter.frequency.setValueAtTime(pulseFreq, pulseTime);
+        filter.Q.setValueAtTime(7.8 + i * 0.4, pulseTime); // High Q for distinctive whistle chirp
 
         const gain = this.ctx.createGain();
-        const pulseGain = 0.22 * Math.pow(0.70, i) * Math.min(1.2, intensity);
-        gain.gain.setValueAtTime(pulseGain, pulseTime);
+        const decay = Math.pow(0.84, i);
+        const pulseVol = 0.68 * decay * effectiveIntensity;
+        gain.gain.setValueAtTime(pulseVol, pulseTime);
         gain.gain.exponentialRampToValueAtTime(0.001, pulseTime + pulseDuration);
 
         noise.connect(filter);
@@ -576,6 +598,22 @@ export class SoundManager {
 
         noise.start(pulseTime);
         noise.stop(pulseTime + pulseDuration + 0.01);
+
+        // Acoustic blade whistle resonance oscillator (creates the sharp 'tu' chirp)
+        const osc = this.ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(pulseFreq * 0.72, pulseTime);
+        osc.frequency.exponentialRampToValueAtTime(pulseFreq * 0.45, pulseTime + pulseDuration);
+
+        const oscGain = this.ctx.createGain();
+        oscGain.gain.setValueAtTime(0.24 * decay * effectiveIntensity, pulseTime);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, pulseTime + pulseDuration);
+
+        osc.connect(oscGain);
+        oscGain.connect(this.effectsBusGain);
+
+        osc.start(pulseTime);
+        osc.stop(pulseTime + pulseDuration + 0.01);
       }
     } catch {}
   }

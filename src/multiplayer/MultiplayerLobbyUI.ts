@@ -1,7 +1,8 @@
 /**
  * Project Apex — MultiplayerLobbyUI
- * Interactive interface for hosting and joining LAN races with car selection,
- * room options, player slots, readiness tracking, and IP connection guides.
+ * Interactive interface for hosting and joining races via:
+ * 1. Online Peer-to-Peer WebRTC rooms (zero setup, works on Vercel HTTPS, mobile, and web)
+ * 2. Local LAN WebSocket server (port 5050)
  */
 
 import { RoomConfig, LobbyPlayer, ServerInfo } from './MultiplayerTypes';
@@ -11,7 +12,8 @@ export interface MultiplayerLobbyCallbacks {
   onHost: (
     roomConfig: Partial<RoomConfig>,
     player: { name: string; vehicleId: string; vehicleName: string; paintId: string },
-    hostAddress: string
+    hostAddress: string,
+    isP2P?: boolean
   ) => Promise<void>;
   onJoin: (
     hostAddress: string,
@@ -31,6 +33,7 @@ export class MultiplayerLobbyUI {
 
   private currentView: 'entry' | 'lobby' = 'entry';
   private entryMode: 'host' | 'join' = 'host';
+  private connectionType: 'p2p' | 'lan' = 'p2p';
 
   private hostRoomConfig: Partial<RoomConfig> = {
     trackId: 'forest_valley',
@@ -44,7 +47,9 @@ export class MultiplayerLobbyUI {
   private selectedVehicleId: string = 'mercedes_slc';
   private selectedPaintId: string = 'deep_blue';
   private playerName: string = 'Driver 1';
-  private hostAddress: string = `${window.location.hostname || 'localhost'}:5050`;
+  private hostAddress: string = `${typeof window !== 'undefined' ? window.location.hostname || 'localhost' : 'localhost'}:5050`;
+  private p2pRoomCode: string = `APX-${Math.floor(1000 + Math.random() * 9000)}`;
+  private joinRoomCode: string = '';
 
   private activeRoomConfig: RoomConfig | null = null;
   private activePlayers: LobbyPlayer[] = [];
@@ -59,6 +64,22 @@ export class MultiplayerLobbyUI {
   constructor(callbacks: MultiplayerLobbyCallbacks) {
     this.callbacks = callbacks;
     this.playerName = `Driver_${Math.floor(100 + Math.random() * 900)}`;
+
+    // Default to P2P online on HTTPS (e.g. Vercel)
+    if (typeof window !== 'undefined') {
+      const isHttps = window.location.protocol === 'https:';
+      this.connectionType = isHttps ? 'p2p' : 'p2p';
+
+      // Check URL query parameters for invite link (e.g. ?room=APX-5921)
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room') || params.get('join');
+      if (roomParam) {
+        this.joinRoomCode = roomParam.trim().toUpperCase();
+        this.entryMode = 'join';
+        this.connectionType = 'p2p';
+      }
+    }
+
     this.createDOM();
   }
 
@@ -97,7 +118,7 @@ export class MultiplayerLobbyUI {
     this.isLocalHost = isHost;
     if (serverInfo) this.serverInfo = serverInfo;
 
-    const me = players.find(p => p.id === selfId);
+    const me = players.find((p) => p.id === selfId);
     this.isLocalReady = me ? me.isReady : false;
 
     this.render();
@@ -107,7 +128,7 @@ export class MultiplayerLobbyUI {
     this.activeRoomConfig = config;
     this.activePlayers = players;
 
-    const me = players.find(p => p.id === this.selfPlayerId);
+    const me = players.find((p) => p.id === this.selfPlayerId);
     if (me) {
       this.isLocalReady = me.isReady;
     }
@@ -151,21 +172,32 @@ export class MultiplayerLobbyUI {
   private renderEntryView(): void {
     if (!this.container) return;
 
-    const cars = VEHICLE_CATALOG; // Available vehicles
-    const selectedCar = VEHICLE_CATALOG.find(c => c.id === this.selectedVehicleId) || VEHICLE_CATALOG[0];
+    const cars = VEHICLE_CATALOG;
+    const selectedCar = VEHICLE_CATALOG.find((c) => c.id === this.selectedVehicleId) || VEHICLE_CATALOG[0];
 
     this.container.innerHTML = `
       <div class="menu-card mp-card">
         <div class="panel-header text-center">
-          <span class="panel-badge cyan-badge">LOCAL NETWORK MULTIPLAYER // LAN ENGINE</span>
-          <h2 class="panel-title large-title">APEX LAN MULTIPLAYER</h2>
-          <span class="event-subtitle">Zero-Latency Local Network Racing • Up to 4 Drivers</span>
+          <span class="panel-badge cyan-badge">MULTIPLAYER RACING // ZERO-SETUP ONLINE & LAN</span>
+          <h2 class="panel-title large-title">PROJECT APEX MULTIPLAYER</h2>
+          <span class="event-subtitle">Cross-Platform Real-Time Racing • Up to 4 Drivers</span>
+        </div>
+
+        <!-- Connection Type Selector: Online P2P vs Local LAN -->
+        <div class="mp-conn-type-bar" role="tablist">
+          <button id="btn-conn-p2p" class="mp-conn-type-btn ${this.connectionType === 'p2p' ? 'active' : ''}">
+            🌐 ONLINE ROOM (ROOM CODE)
+          </button>
+          <button id="btn-conn-lan" class="mp-conn-type-btn ${this.connectionType === 'lan' ? 'active' : ''}">
+            🔌 LOCAL LAN SERVER
+          </button>
         </div>
 
         <div id="mp-status-banner" class="mp-status-banner ${this.statusType}" style="display: ${this.statusMessage ? 'block' : 'none'};">
           ${this.statusMessage}
         </div>
 
+        <!-- Mode Tabs: Host vs Join -->
         <div class="mp-tabs-bar">
           <button id="btn-tab-host" class="mp-tab ${this.entryMode === 'host' ? 'active' : ''}">HOST A RACE</button>
           <button id="btn-tab-join" class="mp-tab ${this.entryMode === 'join' ? 'active' : ''}">JOIN A RACE</button>
@@ -182,7 +214,7 @@ export class MultiplayerLobbyUI {
             <select id="select-mp-car" class="mp-select">
               ${cars
                 .map(
-                  c => `
+                  (c) => `
                 <option value="${c.id}" ${c.id === this.selectedVehicleId ? 'selected' : ''}>
                   ${c.name} [${c.category}]
                 </option>
@@ -237,26 +269,61 @@ export class MultiplayerLobbyUI {
               </label>
             </div>
 
-            <div class="mp-field-group">
-              <label class="mp-field-label">SERVER PORT / BINDING</label>
-              <input id="input-host-addr" class="mp-input" type="text" value="localhost:5050" placeholder="localhost:5050" />
-              <span class="mp-hint">Local host binding. Requires LAN server running on port 5050 (run 'npm run server' or 'node scripts/lan_server.cjs' in terminal).</span>
-            </div>
+            ${
+              this.connectionType === 'p2p'
+                ? `
+              <div class="mp-field-group">
+                <label class="mp-field-label">ROOM CODE (SHARE WITH OTHER RACERS)</label>
+                <div class="mp-room-code-display">
+                  <input id="input-p2p-code" class="mp-input room-code-input" type="text" maxlength="12" value="${this.p2pRoomCode}" />
+                  <button id="btn-regen-code" class="apex-btn secondary-btn btn-sm" title="Generate New Room Code">↻ NEW</button>
+                </div>
+                <span class="mp-hint">Zero-setup WebRTC room. Share this code with friends on mobile, PC, or anywhere!</span>
+              </div>
+            `
+                : `
+              <div class="mp-field-group">
+                <label class="mp-field-label">SERVER PORT / BINDING</label>
+                <input id="input-host-addr" class="mp-input" type="text" value="localhost:5050" placeholder="localhost:5050" />
+                <span class="mp-hint">Requires local LAN server running on port 5050 ('npm run server' in terminal).</span>
+              </div>
+            `
+            }
           `
               : `
-            <div class="mp-field-group">
-              <label class="mp-field-label">HOST LAN IP ADDRESS & PORT</label>
-              <input id="input-join-addr" class="mp-input" type="text" value="${this.hostAddress}" placeholder="e.g. 192.168.1.105:5050" />
-              <span class="mp-hint">Enter the host computer's local IP address displayed on their lobby screen.</span>
-            </div>
+            ${
+              this.connectionType === 'p2p'
+                ? `
+              <div class="mp-field-group">
+                <label class="mp-field-label">ENTER HOST ROOM CODE</label>
+                <input id="input-p2p-join-code" class="mp-input room-code-input" type="text" maxlength="14" value="${this.joinRoomCode}" placeholder="e.g. APX-4821" autofocus />
+                <span class="mp-hint">Enter the 6-character Room Code displayed on the Host's lobby screen.</span>
+              </div>
+            `
+                : `
+              <div class="mp-field-group">
+                <label class="mp-field-label">HOST LAN IP ADDRESS & PORT</label>
+                <input id="input-join-addr" class="mp-input" type="text" value="${this.hostAddress}" placeholder="e.g. 192.168.1.105:5050" />
+                <span class="mp-hint">Enter the host computer's local IP address displayed on their lobby screen.</span>
+              </div>
+            `
+            }
           `
           }
         </div>
 
         <div class="mp-actions-footer">
-          <button id="btn-mp-back" class="apex-btn secondary-btn">BACK TO MENU</button>
+          <button id="btn-mp-back" class="apex-btn secondary-btn">← BACK TO MENU</button>
           <button id="btn-mp-primary-action" class="apex-btn cyan-btn">
-            ${this.entryMode === 'host' ? 'CREATE LAN ROOM' : 'CONNECT TO HOST'}
+            ${
+              this.entryMode === 'host'
+                ? this.connectionType === 'p2p'
+                  ? '🏁 HOST ONLINE RACE'
+                  : 'CREATE LAN ROOM'
+                : this.connectionType === 'p2p'
+                ? '🚀 JOIN ONLINE RACE'
+                : 'CONNECT TO LAN HOST'
+            }
           </button>
         </div>
       </div>
@@ -268,6 +335,9 @@ export class MultiplayerLobbyUI {
   private bindEntryEvents(): void {
     const tabHost = document.getElementById('btn-tab-host');
     const tabJoin = document.getElementById('btn-tab-join');
+    const btnP2P = document.getElementById('btn-conn-p2p');
+    const btnLAN = document.getElementById('btn-conn-lan');
+    const btnRegen = document.getElementById('btn-regen-code');
     const inputName = document.getElementById('input-mp-name') as HTMLInputElement;
     const selectCar = document.getElementById('select-mp-car') as HTMLSelectElement;
     const btnBack = document.getElementById('btn-mp-back');
@@ -283,16 +353,30 @@ export class MultiplayerLobbyUI {
       this.render();
     });
 
+    btnP2P?.addEventListener('click', () => {
+      if (this.connectionType === 'p2p') return;
+      this.connectionType = 'p2p';
+      this.render();
+    });
+
+    btnLAN?.addEventListener('click', () => {
+      if (this.connectionType === 'lan') return;
+      this.connectionType = 'lan';
+      this.render();
+    });
+
+    btnRegen?.addEventListener('click', () => {
+      this.p2pRoomCode = `APX-${Math.floor(1000 + Math.random() * 9000)}`;
+      const inputCode = document.getElementById('input-p2p-code') as HTMLInputElement;
+      if (inputCode) inputCode.value = this.p2pRoomCode;
+    });
+
     inputName?.addEventListener('input', () => {
       this.playerName = inputName.value;
     });
 
     selectCar?.addEventListener('change', () => {
       this.selectedVehicleId = selectCar.value;
-      const c = VEHICLE_CATALOG.find(x => x.id === this.selectedVehicleId);
-      if (c) {
-        this.selectedPaintId = 'racing_red';
-      }
       this.render();
     });
 
@@ -301,7 +385,7 @@ export class MultiplayerLobbyUI {
     });
 
     btnAction?.addEventListener('click', async () => {
-      const selectedCar = VEHICLE_CATALOG.find(c => c.id === this.selectedVehicleId) || VEHICLE_CATALOG[0];
+      const selectedCar = VEHICLE_CATALOG.find((c) => c.id === this.selectedVehicleId) || VEHICLE_CATALOG[0];
       const playerInfo = {
         name: this.playerName.trim() || 'Driver 1',
         vehicleId: this.selectedVehicleId,
@@ -314,9 +398,21 @@ export class MultiplayerLobbyUI {
         const modeSelect = document.getElementById('select-host-mode') as HTMLSelectElement;
         const maxSelect = document.getElementById('select-host-max-players') as HTMLSelectElement;
         const aiCheck = document.getElementById('check-host-ai') as HTMLInputElement;
-        const addrInput = document.getElementById('input-host-addr') as HTMLInputElement;
+
+        const isP2P = this.connectionType === 'p2p';
+        let hostAddr = '';
+
+        if (isP2P) {
+          const codeInput = document.getElementById('input-p2p-code') as HTMLInputElement;
+          hostAddr = codeInput?.value.trim().toUpperCase() || this.p2pRoomCode;
+          this.p2pRoomCode = hostAddr;
+        } else {
+          const addrInput = document.getElementById('input-host-addr') as HTMLInputElement;
+          hostAddr = addrInput?.value.trim() || 'localhost:5050';
+        }
 
         const roomConfig: Partial<RoomConfig> = {
+          roomId: hostAddr,
           trackId: trackSelect?.value || 'forest_valley',
           trackName: trackSelect?.value === 'azure_coast' ? 'Azure Coast Circuit' : 'Forest Valley Circuit',
           raceMode: (modeSelect?.value as any) || 'circuit',
@@ -325,15 +421,28 @@ export class MultiplayerLobbyUI {
           lapCount: 1,
         };
 
-        const hostAddr = addrInput?.value.trim() || 'localhost:5050';
-        this.setStatus('Starting LAN room on ' + hostAddr + '...', 'info');
-        await this.callbacks.onHost(roomConfig, playerInfo, hostAddr);
+        this.setStatus(`Starting ${isP2P ? 'Online P2P Room ' + hostAddr : 'LAN Server on ' + hostAddr}...`, 'info');
+        await this.callbacks.onHost(roomConfig, playerInfo, hostAddr, isP2P);
       } else {
-        const joinAddrInput = document.getElementById('input-join-addr') as HTMLInputElement;
-        const hostAddr = joinAddrInput?.value.trim() || 'localhost:5050';
-        this.hostAddress = hostAddr;
-        this.setStatus('Connecting to host at ' + hostAddr + '...', 'info');
-        await this.callbacks.onJoin(hostAddr, playerInfo);
+        const isP2P = this.connectionType === 'p2p';
+        let targetAddr = '';
+
+        if (isP2P) {
+          const joinCodeInput = document.getElementById('input-p2p-join-code') as HTMLInputElement;
+          targetAddr = joinCodeInput?.value.trim().toUpperCase() || '';
+          if (!targetAddr) {
+            this.setStatus('Please enter the Host Room Code (e.g. APX-4821)', 'error');
+            return;
+          }
+          this.joinRoomCode = targetAddr;
+        } else {
+          const joinAddrInput = document.getElementById('input-join-addr') as HTMLInputElement;
+          targetAddr = joinAddrInput?.value.trim() || 'localhost:5050';
+          this.hostAddress = targetAddr;
+        }
+
+        this.setStatus(`Connecting to ${targetAddr}...`, 'info');
+        await this.callbacks.onJoin(targetAddr, playerInfo);
       }
     });
   }
@@ -345,25 +454,30 @@ export class MultiplayerLobbyUI {
     const players = this.activePlayers;
     const maxSlots = cfg.maxPlayers || 4;
 
-    const hostIp = this.serverInfo ? `${this.serverInfo.localIp}:${this.serverInfo.port}` : 'localhost:5050';
-    const allHumansReady = players.every(p => p.isHost || p.isReady);
+    const isP2P = this.serverInfo?.port === 443 || cfg.roomId.startsWith('APX-');
+    const roomDisplay = isP2P ? cfg.roomId : (this.serverInfo ? `${this.serverInfo.localIp}:${this.serverInfo.port}` : 'localhost:5050');
+
+    const allHumansReady = players.every((p) => p.isHost || p.isReady);
     const canStart = this.isLocalHost && players.length >= 1 && allHumansReady;
 
     this.container.innerHTML = `
       <div class="menu-card mp-card mp-lobby-card">
         <div class="panel-header text-center">
-          <span class="panel-badge gold-badge">LAN RACE LOBBY // ${cfg.roomId}</span>
+          <span class="panel-badge gold-badge">${isP2P ? 'ONLINE RACE LOBBY' : 'LAN RACE LOBBY'} // ${cfg.roomId}</span>
           <h2 class="panel-title large-title">${cfg.trackName.toUpperCase()}</h2>
           <span class="event-subtitle">${cfg.raceMode.toUpperCase()} RACE • ${cfg.lapCount} LAP • ${players.length}/${maxSlots} DRIVERS</span>
         </div>
 
         <div class="mp-ip-banner">
           <div class="mp-ip-col">
-            <span class="mp-ip-label">SHARE HOST LAN IP WITH FRIENDS:</span>
-            <span class="mp-ip-val">${hostIp}</span>
+            <span class="mp-ip-label">${isP2P ? 'SHARE ROOM CODE WITH FRIENDS:' : 'HOST LAN IP ADDRESS:'}</span>
+            <div class="mp-code-row">
+              <span class="mp-ip-val highlighted-code">${roomDisplay}</span>
+              ${isP2P ? `<button id="btn-copy-room-code" class="apex-btn secondary-btn btn-sm">📋 COPY CODE</button>` : ''}
+            </div>
           </div>
           <div class="mp-status-pill ${this.isLocalHost ? 'host-pill' : 'client-pill'}">
-            ${this.isLocalHost ? '👑 ROOM HOST' : 'CONNECTED CLIENT'}
+            ${this.isLocalHost ? '👑 ROOM HOST' : 'CONNECTED RACER'}
           </div>
         </div>
 
@@ -374,102 +488,56 @@ export class MultiplayerLobbyUI {
         <div class="mp-lobby-content">
           <div class="mp-players-grid">
             ${[1, 2, 3, 4]
-              .map(slotNum => {
+              .map((slotNum) => {
                 if (slotNum > maxSlots) return '';
-                const p = players.find(x => x.gridSlot === slotNum);
+                const p = players.find((x) => x.gridSlot === slotNum);
                 if (p) {
                   return `
                     <div class="mp-player-card filled ${p.id === this.selfPlayerId ? 'self-card' : ''}">
                       <div class="slot-badge">GRID P${slotNum}</div>
                       <div class="player-info-row">
                         <span class="player-name">${p.name} ${p.isHost ? '<span class="crown-badge">👑 HOST</span>' : ''}</span>
-                        <span class="player-ping">${p.pingMs > 0 ? `${p.pingMs}ms` : 'LAN'}</span>
+                        <span class="player-ping">${p.pingMs > 0 ? `${p.pingMs}ms` : 'P2P'}</span>
                       </div>
                       <div class="player-car-row">
                         <span class="car-title">${p.vehicleName}</span>
                       </div>
-                      <div class="ready-badge-row">
-                        <span class="ready-tag ${p.isReady ? 'is-ready' : 'not-ready'}">
-                          ${p.isHost ? 'READY (HOST)' : p.isReady ? '✓ READY' : 'WAITING...'}
-                        </span>
-                      </div>
-                    </div>
-                  `;
-                } else if (cfg.fillWithAI) {
-                  return `
-                    <div class="mp-player-card ai-slot">
-                      <div class="slot-badge">GRID P${slotNum}</div>
-                      <div class="player-info-row">
-                        <span class="player-name ai-name">AI OPPONENT</span>
-                      </div>
-                      <div class="player-car-row">
-                        <span class="car-title">Competitive APX Fleet</span>
-                      </div>
-                      <div class="ready-badge-row">
-                        <span class="ready-tag is-ready">AUTO-READY</span>
+                      <div class="player-status-badge ${p.isHost ? 'ready' : p.isReady ? 'ready' : 'waiting'}">
+                        ${p.isHost ? 'HOST' : p.isReady ? '✓ READY' : 'NOT READY'}
                       </div>
                     </div>
                   `;
                 } else {
                   return `
-                    <div class="mp-player-card open-slot">
+                    <div class="mp-player-card empty">
                       <div class="slot-badge">GRID P${slotNum}</div>
-                      <span class="open-slot-text">OPEN SLOT (WAITING...)</span>
+                      <span class="empty-slot-text">${cfg.fillWithAI ? 'AI RIVAL OPPONENT' : 'WAITING FOR RACER...'}</span>
+                      <span class="slot-tag-sub">${cfg.fillWithAI ? 'COMPETITIVE SIMULATED CHASSIS' : 'OPEN LOBBY SLOT'}</span>
                     </div>
                   `;
                 }
               })
               .join('')}
           </div>
-
-          ${
-            this.isLocalHost
-              ? `
-            <div class="mp-host-controls-panel">
-              <span class="panel-section-title">HOST CONTROLS & RACE CONFIGURATION</span>
-              <div class="host-controls-grid">
-                <div class="control-col">
-                  <label>TRACK</label>
-                  <select id="lobby-select-track" class="mp-select small">
-                    <option value="forest_valley" ${cfg.trackId === 'forest_valley' ? 'selected' : ''}>Forest Valley Circuit (980m)</option>
-                    <option value="azure_coast" ${cfg.trackId === 'azure_coast' ? 'selected' : ''}>Azure Coast Circuit (940m)</option>
-                  </select>
-                </div>
-                <div class="control-col">
-                  <label>MODE</label>
-                  <select id="lobby-select-mode" class="mp-select small">
-                    <option value="circuit" ${cfg.raceMode === 'circuit' ? 'selected' : ''}>Circuit Lap</option>
-                    <option value="sprint" ${cfg.raceMode === 'sprint' ? 'selected' : ''}>Sector Sprint</option>
-                  </select>
-                </div>
-                <div class="control-col checkbox-col">
-                  <label class="mp-checkbox-label">
-                    <input id="lobby-check-ai" type="checkbox" ${cfg.fillWithAI ? 'checked' : ''} />
-                    <span>Fill Slots with AI</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          `
-              : ''
-          }
         </div>
 
         <div class="mp-actions-footer">
-          <button id="btn-lobby-leave" class="apex-btn secondary-btn">LEAVE LOBBY</button>
-          ${
-            !this.isLocalHost
-              ? `
-            <button id="btn-lobby-ready" class="apex-btn ${this.isLocalReady ? 'secondary-btn' : 'primary-btn'}">
-              ${this.isLocalReady ? 'CANCEL READY' : 'I AM READY!'}
-            </button>
-          `
-              : `
-            <button id="btn-lobby-start" class="apex-btn cyan-btn" ${canStart ? '' : 'disabled'}>
-              ${canStart ? '🚀 LAUNCH RACE' : 'WAITING FOR PLAYERS...'}
-            </button>
-          `
-          }
+          <button id="btn-mp-leave" class="apex-btn secondary-btn">LEAVE LOBBY</button>
+          <div class="mp-action-right-group">
+            ${
+              !this.isLocalHost
+                ? `
+              <button id="btn-mp-toggle-ready" class="apex-btn ${this.isLocalReady ? 'secondary-btn' : 'cyan-btn'}">
+                ${this.isLocalReady ? 'CANCEL READY' : '✓ READY TO RACE'}
+              </button>
+            `
+                : `
+              <button id="btn-mp-start" class="apex-btn primary-btn ${!canStart ? 'btn-disabled' : ''}" ${!canStart ? 'disabled' : ''}>
+                🏁 START MULTIPLAYER EVENT
+              </button>
+            `
+            }
+          </div>
         </div>
       </div>
     `;
@@ -478,13 +546,10 @@ export class MultiplayerLobbyUI {
   }
 
   private bindLobbyEvents(): void {
-    const btnLeave = document.getElementById('btn-lobby-leave');
-    const btnReady = document.getElementById('btn-lobby-ready');
-    const btnStart = document.getElementById('btn-lobby-start');
-
-    const selectTrack = document.getElementById('lobby-select-track') as HTMLSelectElement;
-    const selectMode = document.getElementById('lobby-select-mode') as HTMLSelectElement;
-    const checkAI = document.getElementById('lobby-check-ai') as HTMLInputElement;
+    const btnLeave = document.getElementById('btn-mp-leave');
+    const btnReady = document.getElementById('btn-mp-toggle-ready');
+    const btnStart = document.getElementById('btn-mp-start');
+    const btnCopy = document.getElementById('btn-copy-room-code');
 
     btnLeave?.addEventListener('click', () => {
       this.callbacks.onLeave();
@@ -497,27 +562,17 @@ export class MultiplayerLobbyUI {
     });
 
     btnStart?.addEventListener('click', () => {
-      this.setStatus('Launching synchronized countdown for all players...', 'info');
       this.callbacks.onStartRace();
     });
 
-    selectTrack?.addEventListener('change', () => {
-      this.callbacks.onUpdateConfig({
-        trackId: selectTrack.value,
-        trackName: selectTrack.value === 'azure_coast' ? 'Azure Coast Circuit' : 'Forest Valley Circuit',
-      });
-    });
-
-    selectMode?.addEventListener('change', () => {
-      this.callbacks.onUpdateConfig({
-        raceMode: selectMode.value as any,
-      });
-    });
-
-    checkAI?.addEventListener('change', () => {
-      this.callbacks.onUpdateConfig({
-        fillWithAI: checkAI.checked,
-      });
+    btnCopy?.addEventListener('click', () => {
+      if (this.activeRoomConfig?.roomId) {
+        navigator.clipboard?.writeText(this.activeRoomConfig.roomId);
+        if (btnCopy) btnCopy.textContent = '✓ COPIED!';
+        setTimeout(() => {
+          if (btnCopy) btnCopy.textContent = '📋 COPY CODE';
+        }, 2000);
+      }
     });
   }
 }

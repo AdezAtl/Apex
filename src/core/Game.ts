@@ -36,6 +36,7 @@ import { CareerEventDefinition } from '../career/CareerConfig';
 import { getCircuitById } from '../tracks/TrackRegistry';
 import { MultiplayerManager } from '../multiplayer/MultiplayerManager';
 import { requestFullscreenIfMobile } from '../utils/Fullscreen';
+import { MenuNavigationManager } from '../ui/MenuNavigationManager';
 
 export class Game {
   public sceneManager: SceneManager;
@@ -65,6 +66,7 @@ export class Game {
   public careerHub: CareerHub;
   public careerResultsScreen: CareerResultsScreen;
   public multiplayerManager: MultiplayerManager;
+  public menuNavigator: MenuNavigationManager;
 
   // Career Session state
   public isCareerSession: boolean = false;
@@ -398,6 +400,9 @@ export class Game {
     this.carInfoElement = document.getElementById('car-info');
     this.cameraModeElement = document.getElementById('camera-mode');
 
+    // Universal controller & keyboard menu navigation manager
+    this.menuNavigator = new MenuNavigationManager(this.soundManager);
+
     // Apply saved graphics quality
     this.sceneManager.applyGraphicsQuality(this.settingsManager.getSettings().graphicsQuality);
   }
@@ -522,6 +527,13 @@ export class Game {
           }
         }
 
+        const activeGamepad = this.inputManager.gamepadManager.getActiveGamepad();
+
+        // Universal Menu Navigation update across all menu overlays
+        if (this.state !== GameState.Racing && this.state !== GameState.Countdown) {
+          this.menuNavigator.update(dt, activeGamepad);
+        }
+
         // State Machine Execution
         switch (this.state) {
           case GameState.MainMenu:
@@ -534,12 +546,17 @@ export class Game {
             break;
 
           case GameState.Garage:
-          case GameState.CareerHub:
+          case GameState.CareerHub: {
             // Silence engine in showroom & career hub turntable
             this.soundManager.updateEngine(0, 0, 0, false);
             this.soundManager.updateTires(0, 0, 0, false);
-            this.sceneManager.updateGarageCamera(dt);
+            const rightStickX = activeGamepad ? (activeGamepad.axes[2] ?? 0) : 0;
+            this.sceneManager.updateGarageCamera(dt, rightStickX);
+            if (activeGamepad && this.state === GameState.Garage) {
+              this.garageScreen.updateGamepadInput(activeGamepad, dt);
+            }
             break;
+          }
 
           case GameState.Countdown:
             this.countdownElapsed += dt;
@@ -740,10 +757,12 @@ export class Game {
             // Aerodynamic high-speed wind rush
             this.soundManager.updateWindRush(this.vehicleController.forwardSpeed, true);
 
-            // Turbo Blow-Off Valve (BOV) flutter on high-RPM throttle lift
+            // Turbo Blow-Off Valve (BOV) flutter on high-RPM throttle lift ('stututu')
             const currThrottle = this.vehicleController.throttleLoad;
-            if (this.prevPlayerThrottle > 0.65 && currThrottle < 0.15 && this.vehicleController.engineRpm > 4200) {
-              this.soundManager.playTurboBlowOff(Math.min(1.2, this.vehicleController.engineRpm / 5500));
+            const throttleDrop = this.prevPlayerThrottle - currThrottle;
+            if (throttleDrop > 0.38 && this.vehicleController.engineRpm > 3600) {
+              const boostIntensity = Math.min(1.4, (this.vehicleController.engineRpm - 2800) / 2400);
+              this.soundManager.playTurboBlowOff(boostIntensity);
             }
             this.prevPlayerThrottle = currThrottle;
 
@@ -773,10 +792,17 @@ export class Game {
             }
 
             // Compute player progress distance & relative grid ranking
-            const playerProgress = this.aiManager.waypointManager.getProgressDistance(
+            let playerProgress = this.aiManager.waypointManager.getProgressDistance(
               this.vehicleController.position,
               this.checkpointManager.lapCount + 1
             );
+            // On Lap 1 before crossing CP_1, if player is slightly behind the start line, clamp progress to 0
+            if (this.checkpointManager.lapCount === 0 && this.checkpointManager.currentCheckpointIndex === 0) {
+              const trackDist = this.aiManager.waypointManager.getTrackDistance(this.vehicleController.position);
+              if (trackDist > this.aiManager.waypointManager.trackLength * 0.80) {
+                playerProgress = 0;
+              }
+            }
             const rankInfo = this.aiManager.getPlayerRank(playerProgress);
 
             let posRank = rankInfo.rankFormatted;
@@ -1607,6 +1633,7 @@ if (this.multiplayerManager?.isActive) {
     this.finishScreen.dispose();
     this.replayManager.dispose();
     this.tireFeedbackManager?.dispose();
+    this.menuNavigator.dispose();
     this.vehicle.dispose();
     this.sceneManager.dispose();
   }
