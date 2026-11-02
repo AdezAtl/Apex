@@ -145,11 +145,15 @@ export class VehicleController {
     const targetMaxSteer = this.config.maxSteerAngle * steerAuthority;
 
     let targetSteer = 0;
-    if (input.steerLeft) {
-      targetSteer -= targetMaxSteer;
-    }
-    if (input.steerRight) {
-      targetSteer += targetMaxSteer;
+    if (input.steerAxis !== undefined && Math.abs(input.steerAxis) > 0.02) {
+      targetSteer = input.steerAxis * targetMaxSteer;
+    } else {
+      if (input.steerLeft) {
+        targetSteer -= targetMaxSteer;
+      }
+      if (input.steerRight) {
+        targetSteer += targetMaxSteer;
+      }
     }
 
     // Smoothly transition steering angle towards target with weighted rack response
@@ -183,10 +187,13 @@ export class VehicleController {
       effectiveMaxSpeed *= 1.06; // +6% slipstream ceiling
     }
 
-    if (input.forward) {
+    const throttleVal = input.throttleAxis !== undefined ? input.throttleAxis : (input.forward ? 1.0 : 0.0);
+    const brakeVal = input.brakeAxis !== undefined ? input.brakeAxis : (input.backward ? 1.0 : 0.0);
+
+    if (throttleVal > 0.02) {
       if (this.forwardSpeed < -0.2) {
         // Moving backward: pressing forward applies service brakes to stop reverse motion
-        this.forwardSpeed += this.config.brakeForce * dt;
+        this.forwardSpeed += this.config.brakeForce * throttleVal * dt;
         if (this.forwardSpeed > 0) this.forwardSpeed = 0;
       } else {
         // Accelerating forward: progressive power falloff toward top speed
@@ -200,7 +207,7 @@ export class VehicleController {
           launchMultiplier = 1.0 + (this.currentProfile.launchTractionFactor - 1.0) * launchBlend;
         }
 
-        this.forwardSpeed += (this.config.acceleration * powerCurve * launchMultiplier + boostBonusAccel) * dt;
+        this.forwardSpeed += (this.config.acceleration * powerCurve * launchMultiplier * throttleVal + boostBonusAccel) * dt;
         if (this.forwardSpeed > effectiveMaxSpeed) {
           this.forwardSpeed = effectiveMaxSpeed;
         }
@@ -211,16 +218,16 @@ export class VehicleController {
       if (this.forwardSpeed > effectiveMaxSpeed) {
         this.forwardSpeed = effectiveMaxSpeed;
       }
-    } else if (input.backward) {
+    } else if (brakeVal > 0.02) {
       if (this.forwardSpeed > 0.2) {
         // Moving forward: pressing backward applies service brakes
-        this.forwardSpeed -= this.config.brakeForce * dt;
+        this.forwardSpeed -= this.config.brakeForce * brakeVal * dt;
         if (this.forwardSpeed < 0) this.forwardSpeed = 0;
         // Trail-braking yaw stabilization helps regain control entering turns
         this.yawRate *= Math.max(0, 1.0 - dt * 2.2);
       } else {
         // Vehicle stopped or near-zero: engage reverse gear and accelerate backward
-        this.forwardSpeed -= this.config.reverseAcceleration * dt;
+        this.forwardSpeed -= this.config.reverseAcceleration * brakeVal * dt;
         if (this.forwardSpeed < -this.config.maxReverseSpeed) {
           this.forwardSpeed = -this.config.maxReverseSpeed;
         }

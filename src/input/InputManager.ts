@@ -1,4 +1,5 @@
 import { requestFullscreenIfMobile, toggleFullscreen } from '../utils/Fullscreen';
+import { GamepadManager } from './GamepadManager';
 
 export interface InputState {
   forward: boolean;
@@ -10,11 +11,15 @@ export interface InputState {
   reset: boolean;
   toggleCamera: boolean;
   pause: boolean;
+  steerAxis?: number; // -1.0 (left) to 1.0 (right)
+  throttleAxis?: number; // 0.0 to 1.0
+  brakeAxis?: number; // 0.0 to 1.0
 }
 
 export class InputManager {
   private keys: Set<string> = new Set();
   private touchActions: Set<keyof InputState> = new Set();
+  public gamepadManager: GamepadManager;
 
   private pendingReset: boolean = false;
   private pendingToggleCamera: boolean = false;
@@ -26,6 +31,7 @@ export class InputManager {
   private toggleBtn: HTMLButtonElement | null = null;
 
   constructor() {
+    this.gamepadManager = new GamepadManager();
     this.bindKeyboardEvents();
     this.initMobileTouchControls();
   }
@@ -200,13 +206,14 @@ export class InputManager {
   }
 
   private updateTouchVisibility(): void {
-    const shouldShow = this.inRace && this.touchEnabled;
+    const isGamepadSuppression = this.gamepadManager.isGamepadActive();
+    const shouldShow = this.inRace && this.touchEnabled && !isGamepadSuppression;
     if (this.touchContainer) {
       this.touchContainer.className = shouldShow ? 'touch-visible' : 'touch-hidden';
       this.touchContainer.style.display = shouldShow ? 'block' : 'none';
     }
     if (this.toggleBtn) {
-      this.toggleBtn.style.display = this.inRace ? 'block' : 'none';
+      this.toggleBtn.style.display = this.inRace && !isGamepadSuppression ? 'block' : 'none';
     }
   }
 
@@ -362,58 +369,103 @@ export class InputManager {
   }
 
   public getState(): InputState {
+    const gp = this.gamepadManager.poll();
+    const hasGpSteer = Math.abs(gp.steerAxis) > 0.05;
+    const hasGpThrottle = gp.throttleAxis > 0.05;
+    const hasGpBrake = gp.brakeAxis > 0.05;
+
+    // Check if touch suppression needs an update
+    this.updateTouchVisibility();
+
+    const forwardKey =
+      this.keys.has('KeyW') ||
+      this.keys.has('ArrowUp') ||
+      this.touchActions.has('forward');
+    const backwardKey =
+      this.keys.has('KeyS') ||
+      this.keys.has('ArrowDown') ||
+      this.touchActions.has('backward');
+    const steerLeftKey =
+      this.keys.has('KeyA') ||
+      this.keys.has('ArrowLeft') ||
+      this.touchActions.has('steerLeft');
+    const steerRightKey =
+      this.keys.has('KeyD') ||
+      this.keys.has('ArrowRight') ||
+      this.touchActions.has('steerRight');
+
+    let steerAxis: number | undefined = undefined;
+    if (hasGpSteer) {
+      steerAxis = gp.steerAxis;
+    } else if (steerLeftKey) {
+      steerAxis = -1.0;
+    } else if (steerRightKey) {
+      steerAxis = 1.0;
+    }
+
+    let throttleAxis: number | undefined = undefined;
+    if (hasGpThrottle) {
+      throttleAxis = gp.throttleAxis;
+    } else if (forwardKey) {
+      throttleAxis = 1.0;
+    }
+
+    let brakeAxis: number | undefined = undefined;
+    if (hasGpBrake) {
+      brakeAxis = gp.brakeAxis;
+    } else if (backwardKey) {
+      brakeAxis = 1.0;
+    }
+
     return {
-      forward:
-        this.keys.has('KeyW') ||
-        this.keys.has('ArrowUp') ||
-        this.touchActions.has('forward'),
-      backward:
-        this.keys.has('KeyS') ||
-        this.keys.has('ArrowDown') ||
-        this.touchActions.has('backward'),
-      steerLeft:
-        this.keys.has('KeyA') ||
-        this.keys.has('ArrowLeft') ||
-        this.touchActions.has('steerLeft'),
-      steerRight:
-        this.keys.has('KeyD') ||
-        this.keys.has('ArrowRight') ||
-        this.touchActions.has('steerRight'),
+      forward: forwardKey || hasGpThrottle,
+      backward: backwardKey || hasGpBrake,
+      steerLeft: steerLeftKey || gp.steerAxis < -0.2,
+      steerRight: steerRightKey || gp.steerAxis > 0.2,
       handbrake:
         this.keys.has('Space') ||
-        this.touchActions.has('handbrake'),
+        this.touchActions.has('handbrake') ||
+        gp.handbrake,
       boost:
         this.keys.has('ShiftLeft') ||
         this.keys.has('ShiftRight') ||
         this.keys.has('KeyN') ||
-        this.touchActions.has('boost'),
-      reset: this.pendingReset,
-      toggleCamera: this.pendingToggleCamera,
-      pause: this.pendingPause,
+        this.touchActions.has('boost') ||
+        gp.boost,
+      reset: this.pendingReset || gp.resetPressed,
+      toggleCamera: this.pendingToggleCamera || gp.toggleCameraPressed,
+      pause: this.pendingPause || gp.pausePressed,
+      steerAxis,
+      throttleAxis,
+      brakeAxis,
     };
   }
 
   public hasDrivingInput(): boolean {
     const s = this.getState();
-    return s.forward || s.backward || s.steerLeft || s.steerRight || s.handbrake;
+    return s.forward || s.backward || s.steerLeft || s.steerRight || s.handbrake || (s.throttleAxis !== undefined && s.throttleAxis > 0.05);
   }
 
   public consumeReset(): boolean {
-    const val = this.pendingReset;
+    const val = this.pendingReset || this.gamepadManager.consumeReset();
     this.pendingReset = false;
     return val;
   }
 
   public consumeToggleCamera(): boolean {
-    const val = this.pendingToggleCamera;
+    const val = this.pendingToggleCamera || this.gamepadManager.consumeToggleCamera();
     this.pendingToggleCamera = false;
     return val;
   }
 
   public consumePause(): boolean {
-    const val = this.pendingPause;
+    const val = this.pendingPause || this.gamepadManager.consumePause();
     this.pendingPause = false;
     return val;
+  }
+
+  public triggerHaptic(weak: number, strong: number, durationMs: number = 100): void {
+    this.gamepadManager.vibrate(weak, strong, durationMs);
   }
 
   public clearAll(): void {
@@ -428,5 +480,6 @@ export class InputManager {
     this.clearAll();
     this.touchContainer?.remove();
     this.toggleBtn?.remove();
+    this.gamepadManager.dispose();
   }
 }

@@ -613,6 +613,13 @@ export class Game {
             // Vehicle physics update
             this.vehicleController.update(dt, inputState);
 
+            // Controller rumble feedback for nitro boost & extreme drift slip
+            if (this.vehicleController.isBoosting) {
+              this.inputManager.triggerHaptic(0.35, 0.15, 60);
+            } else if (Math.abs(this.vehicleController.lateralSpeed) > 3.2) {
+              this.inputManager.triggerHaptic(0.2, 0.05, 50);
+            }
+
             // AI Opponents update
             this.aiManager.update(
               dt,
@@ -637,6 +644,7 @@ export class Game {
                 (hit) => {
                   this.soundManager.playCollisionImpact(hit.impactSpeed);
                   this.sceneManager.triggerCameraShake(Math.min(0.9, hit.impactSpeed * 0.12));
+                  this.inputManager.triggerHaptic(0.4, Math.min(1.0, hit.impactSpeed * 0.15), 180);
                   if (this.currentEvent.mode === 'drift') {
                     this.driftScoringManager.onCollision(hit.impactSpeed);
                   }
@@ -648,6 +656,7 @@ export class Game {
             const collisionResult = this.trackCollision.resolveCollision(this.vehicleController);
             if (collisionResult.deflectionApplied) {
               this.sceneManager.triggerCameraShake(0.85);
+              this.inputManager.triggerHaptic(0.45, 0.75, 200);
               if (this.isCareerSession) {
                 this.careerWallCollisions++;
               }

@@ -5024,5 +5024,36 @@ body {
   color: #94a3b8;
 }
 
+/* ==========================================================================
+   GAMEPAD TOAST NOTIFICATION
+   ========================================================================== */
+.apex-gamepad-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(10, 15, 26, 0.94);
+  border: 1px solid rgba(0, 215, 255, 0.55);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), 0 0 16px rgba(0, 215, 255, 0.25);
+  border-radius: 999px;
+  padding: 8px 22px;
+  font-family: var(--font-display, 'Orbitron', sans-serif);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #00d7ff;
+  text-transform: uppercase;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  backdrop-filter: blur(8px);
+}
+
+.apex-gamepad-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 
 

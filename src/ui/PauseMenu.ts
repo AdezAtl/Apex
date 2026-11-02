@@ -36,7 +36,7 @@ export class PauseMenu {
           <button id="btn-pause-settings" class="pause-btn">SETTINGS</button>
           <button id="btn-pause-menu" class="pause-btn danger">ABANDON EVENT & RETURN</button>
         </div>
-        <p class="pause-hint">[ESC] TO RESUME • ABANDONING DISCARDS PROGRESS</p>
+        <p class="pause-hint">[ESC] OR [START] TO RESUME • ABANDONING DISCARDS PROGRESS</p>
       </div>
     `;
 
@@ -118,8 +118,8 @@ export class PauseMenu {
 
     if (hint) {
       hint.textContent = isMultiplayer
-        ? '[ESC] TO RESUME • RACE CONTINUES IN BACKGROUND'
-        : '[ESC] TO RESUME • ABANDONING DISCARDS PROGRESS';
+        ? '[ESC] OR [START] TO RESUME • RACE CONTINUES IN BACKGROUND'
+        : '[ESC] OR [START] TO RESUME • ABANDONING DISCARDS PROGRESS';
     }
   }
 
