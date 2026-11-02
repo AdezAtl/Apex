@@ -160,9 +160,6 @@ export class MainMenu {
     if (e.code === 'KeyC' && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       this.triggerCareer();
-    } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      e.preventDefault();
-      this.triggerPlay();
     } else if (e.code === 'KeyM' && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       this.triggerMultiplayer();

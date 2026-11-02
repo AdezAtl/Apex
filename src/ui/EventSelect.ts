@@ -3,12 +3,13 @@ import { RaceEventConfig } from '../events/EventConfig';
 import { AIDifficulty } from '../ai/AIOpponent';
 import { CircuitDefinition } from '../tracks/TrackConfig';
 import { ALL_CIRCUITS, getCircuitById, DEFAULT_CIRCUIT_ID } from '../tracks/TrackRegistry';
-import { getVehicleById } from '../vehicle/VehicleCatalog';
+import { getVehicleById, VEHICLE_CATALOG } from '../vehicle/VehicleCatalog';
 import { CareerManager } from '../career/CareerManager';
 
 export interface EventSelectCallbacks {
   onStartEvent: (event: RaceEventConfig, difficulty: AIDifficulty, circuit: CircuitDefinition) => void;
   onOpenGarage?: () => void;
+  onSelectVehicle?: (vehicleId: string) => void;
   onBack: () => void;
 }
 
@@ -179,13 +180,17 @@ export class EventSelect {
                   <span id="event-select-vehicle-name" class="veh-name">--</span>
                   <span id="event-select-vehicle-specs" class="veh-specs">--</span>
                 </div>
-                <button id="btn-event-open-garage" class="apex-btn secondary-btn compact-btn" type="button">
-                  <span class="btn-text">GARAGE / SWITCH</span>
-                </button>
+                <div class="veh-switch-actions">
+                  <button id="btn-event-prev-car" class="apex-btn secondary-btn btn-sm" type="button" title="Previous Chassis">◀ PREV</button>
+                  <button id="btn-event-next-car" class="apex-btn secondary-btn btn-sm" type="button" title="Next Chassis">NEXT ▶</button>
+                  <button id="btn-event-open-garage" class="apex-btn secondary-btn compact-btn" type="button">
+                    <span class="btn-text">GARAGE</span>
+                  </button>
+                </div>
               </div>
 
               <div class="event-card-actions">
-                <button id="btn-start-event" class="apex-btn primary-btn full-width" autofocus type="button">
+                <button id="btn-start-event" class="apex-btn primary-btn full-width" type="button">
                   <span id="btn-start-text" class="btn-text">START RACE</span>
                 </button>
               </div>
@@ -241,6 +246,16 @@ export class EventSelect {
     });
 
     this.renderEventTabs();
+
+    document.getElementById('btn-event-prev-car')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.selectPrevVehicle();
+    });
+
+    document.getElementById('btn-event-next-car')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.selectNextVehicle();
+    });
 
     document.getElementById('btn-event-open-garage')?.addEventListener('click', () => {
       this.triggerOpenGarage();
@@ -431,25 +446,44 @@ export class EventSelect {
     }, 400);
   }
 
+  public selectNextVehicle(): void {
+    const cm = CareerManager.getInstance();
+    const ownedIds = cm.getOwnedVehicleIds();
+    const available = VEHICLE_CATALOG.filter((v) => ownedIds.includes(v.id) || v.tier === 1);
+    if (available.length === 0) return;
+    const currentId = cm.getSelectedVehicleId();
+    const curIdx = available.findIndex((v) => v.id === currentId);
+    const nextIdx = (curIdx + 1) % available.length;
+    const nextVehicle = available[nextIdx];
+    cm.setSelectedVehicleId(nextVehicle.id);
+    this.updateSelectedVehicle();
+    if (this.callbacks.onSelectVehicle) {
+      this.callbacks.onSelectVehicle(nextVehicle.id);
+    }
+  }
+
+  public selectPrevVehicle(): void {
+    const cm = CareerManager.getInstance();
+    const ownedIds = cm.getOwnedVehicleIds();
+    const available = VEHICLE_CATALOG.filter((v) => ownedIds.includes(v.id) || v.tier === 1);
+    if (available.length === 0) return;
+    const currentId = cm.getSelectedVehicleId();
+    const curIdx = available.findIndex((v) => v.id === currentId);
+    const prevIdx = (curIdx - 1 + available.length) % available.length;
+    const prevVehicle = available[prevIdx];
+    cm.setSelectedVehicleId(prevVehicle.id);
+    this.updateSelectedVehicle();
+    if (this.callbacks.onSelectVehicle) {
+      this.callbacks.onSelectVehicle(prevVehicle.id);
+    }
+  }
+
   private handleKeyDown(e: KeyboardEvent): void {
     if (!this.isVisible) return;
 
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      e.preventDefault();
-      this.triggerStartEvent();
-    } else if (e.code === 'Escape') {
+    if (e.code === 'Escape') {
       e.preventDefault();
       this.triggerBack();
-    } else if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') {
-      e.preventDefault();
-      const circuit = this.getSelectedCircuit();
-      this.selectedEventIndex = (this.selectedEventIndex - 1 + circuit.events.length) % circuit.events.length;
-      this.renderSelectedEvent();
-    } else if (e.code === 'ArrowRight' || e.code === 'ArrowDown') {
-      e.preventDefault();
-      const circuit = this.getSelectedCircuit();
-      this.selectedEventIndex = (this.selectedEventIndex + 1) % circuit.events.length;
-      this.renderSelectedEvent();
     }
   }
 
@@ -462,8 +496,9 @@ export class EventSelect {
     this.container.classList.remove('hidden');
     window.addEventListener('keydown', this.boundKeyDown);
 
-    const btnStart = document.getElementById('btn-start-event');
-    btnStart?.focus();
+    // Focus the active mode tab instead of immediately auto-firing the race
+    const activeTab = this.container.querySelector<HTMLElement>('.event-tab.active') || document.getElementById('btn-start-event');
+    activeTab?.focus();
   }
 
   public updateSelectedVehicle(): void {

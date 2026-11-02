@@ -37,6 +37,9 @@ import { getCircuitById } from '../tracks/TrackRegistry';
 import { MultiplayerManager } from '../multiplayer/MultiplayerManager';
 import { requestFullscreenIfMobile } from '../utils/Fullscreen';
 import { MenuNavigationManager } from '../ui/MenuNavigationManager';
+import { PursuitManager } from '../events/PursuitManager';
+import { EliminationManager } from '../events/EliminationManager';
+import { SpeedTrapManager } from '../events/SpeedTrapManager';
 
 export class Game {
   public sceneManager: SceneManager;
@@ -59,6 +62,9 @@ export class Game {
   public settingsManager: SettingsManager;
   public soundManager: SoundManager;
   public driftScoringManager: DriftScoringManager;
+  public pursuitManager: PursuitManager;
+  public eliminationManager: EliminationManager;
+  public speedTrapManager: SpeedTrapManager;
   public aiManager: AIManager;
   public replayManager: ReplayManager;
   public physicsDebugOverlay: PhysicsDebugOverlay;
@@ -114,6 +120,8 @@ export class Game {
     this.racingHUD = new RacingHUD();
     this.settingsManager = new SettingsManager();
     const settings = this.settingsManager.getSettings();
+    this.inputManager.setControlScheme(settings.mobileControlScheme || 'buttons');
+    this.inputManager.setTouchScale(settings.touchControlScale ?? 1.0);
     this.soundManager = new SoundManager(
       settings.masterVolume,
       settings.engineVolume,
@@ -122,6 +130,9 @@ export class Game {
       settings.musicVolume
     );
     this.driftScoringManager = new DriftScoringManager();
+    this.pursuitManager = new PursuitManager(this.sceneManager.scene, this.soundManager);
+    this.eliminationManager = new EliminationManager(this.soundManager);
+    this.speedTrapManager = new SpeedTrapManager(this.soundManager);
     this.aiManager = new AIManager(this.sceneManager.scene);
     this.replayManager = new ReplayManager(this.sceneManager.scene, this.soundManager);
     this.physicsDebugOverlay = new PhysicsDebugOverlay();
@@ -334,6 +345,12 @@ export class Game {
         this.soundManager.playUIClick();
         this.openGarage(GameState.EventSelect);
       },
+      onSelectVehicle: async (vehicleId) => {
+        this.soundManager.playUISelect();
+        this.settingsManager.setSelectedVehicleId(vehicleId);
+        this.careerManager.setSelectedVehicleId(vehicleId);
+        await this.syncSelectedVehicle(vehicleId);
+      },
     });
 
     // Settings Menu
@@ -363,6 +380,15 @@ export class Game {
         this.settingsManager.setMuted(isMuted);
         this.soundManager.setMuted(isMuted);
       },
+      onControlSchemeChange: (scheme) => {
+        this.soundManager.playUISelect();
+        this.settingsManager.setMobileControlScheme(scheme);
+        this.inputManager.setControlScheme(scheme);
+      },
+      onTouchScaleChange: (scale) => {
+        this.settingsManager.setTouchControlScale(scale);
+        this.inputManager.setTouchScale(scale);
+      },
       onBack: () => {
         this.soundManager.playUIClick();
         this.setGameState(this.settingsReturnState);
@@ -378,9 +404,22 @@ export class Game {
     });
 
     // Checkpoint completion handlers
+    this.checkpointManager.onCheckpointCrossed = (cp) => {
+      if (this.state === GameState.Racing && this.vehicleController) {
+        if (this.currentEvent.mode === 'speed_trap') {
+          const speedKmh = Math.abs(this.vehicleController.forwardSpeed * 3.6);
+          this.speedTrapManager.onCheckpointCrossed(cp.id, speedKmh);
+        }
+      }
+    };
+
     this.checkpointManager.onLapCompleted = () => {
-      if (this.state === GameState.Racing && this.currentEvent.mode === 'time_trial') {
-        this.finishRace();
+      if (this.state === GameState.Racing) {
+        if (this.currentEvent.mode === 'time_trial') {
+          this.finishRace();
+        } else if (this.currentEvent.mode === 'speed_trap') {
+          this.finishRace(this.speedTrapManager.getAggregateSpeed());
+        }
       }
     };
 
@@ -447,6 +486,9 @@ export class Game {
         }
       }
       this.aiManager.hideOpponents();
+
+      // Preload Fairheaven police interceptor cruiser for pursuit events
+      await this.pursuitManager.loadCopCruiser();
 
       this.vehicleController = new VehicleController(carStartPos, initialYaw);
       if (catalogItem) {
@@ -805,6 +847,33 @@ export class Game {
             }
             const rankInfo = this.aiManager.getPlayerRank(playerProgress);
 
+            // Mode-specific rules and win/loss resolution
+            if (this.currentEvent.mode === 'elimination') {
+              const elimResult = this.eliminationManager.update(dt, rankInfo.rank, this.aiManager.opponents);
+              if (elimResult.playerEliminated) {
+                this.cachedFinishPositionDisplay = `ELIMINATED • FINISHED ${rankInfo.rankFormatted} OF ${this.aiManager.opponents.length + 1}`;
+                this.finishRace(this.raceTimeSeconds);
+              } else if (elimResult.playerWon) {
+                this.cachedFinishPositionDisplay = '1ST PLACE • ELIMINATION CHAMPION!';
+                this.finishRace(this.raceTimeSeconds);
+              }
+            } else if (this.currentEvent.mode === 'pursuit') {
+              const pursuitResult = this.pursuitManager.update(dt, this.vehicleController, this.currentCircuit);
+              if (pursuitResult.isBusted) {
+                this.cachedFinishPositionDisplay = 'BUSTED! VEHICLE IMPOUNDED';
+                this.finishRace(this.raceTimeSeconds);
+              } else if (pursuitResult.isEscaped) {
+                this.cachedFinishPositionDisplay = 'ESCAPED! PATROL LOCK BROKEN';
+                this.finishRace(this.raceTimeSeconds);
+              }
+            } else if (this.currentEvent.mode === 'speed_trap') {
+              this.speedTrapManager.update(dt);
+              if (this.speedTrapManager.isAllTrapsCompleted() && this.checkpointManager.lapCount >= 1) {
+                this.cachedFinishPositionDisplay = `RADAR GATES CLEARED • ${Math.round(this.speedTrapManager.getAggregateSpeed())} KM/H`;
+                this.finishRace(this.speedTrapManager.getAggregateSpeed());
+              }
+            }
+
             let posRank = rankInfo.rankFormatted;
             let posTotal = `/ ${rankInfo.totalRacers}`;
             if (this.multiplayerManager?.isActive) {
@@ -831,6 +900,18 @@ export class Game {
               driftTelemetry:
                 this.currentEvent.mode === 'drift'
                   ? this.driftScoringManager.getTelemetry()
+                  : undefined,
+              eliminationTelemetry:
+                this.currentEvent.mode === 'elimination'
+                  ? this.eliminationManager.getTelemetry()
+                  : undefined,
+              pursuitTelemetry:
+                this.currentEvent.mode === 'pursuit'
+                  ? this.pursuitManager.getTelemetry(this.vehicleController.position)
+                  : undefined,
+              speedTrapTelemetry:
+                this.currentEvent.mode === 'speed_trap'
+                  ? this.speedTrapManager.getTelemetry()
                   : undefined,
             });
             break;
@@ -1098,9 +1179,11 @@ export class Game {
         const resultValue =
           this.currentEvent.mode === 'drift'
             ? this.driftScoringManager.totalBankedScore
+            : this.currentEvent.mode === 'speed_trap'
+            ? this.speedTrapManager.getAggregateSpeed()
             : this.raceTimeSeconds;
-        let finishPositionDisplay: string | undefined;
-        if (this.aiManager.isEnabled && this.vehicleController) {
+        let finishPositionDisplay: string | undefined = this.cachedFinishPositionDisplay;
+        if (!finishPositionDisplay && this.aiManager.isEnabled && this.vehicleController) {
           const playerProgress = this.aiManager.waypointManager.getProgressDistance(
             this.vehicleController.position,
             this.checkpointManager.lapCount + 1
@@ -1280,7 +1363,7 @@ export class Game {
       this.currentEvent = event;
     }
 
-if (this.multiplayerManager?.isActive) {
+    if (this.multiplayerManager?.isActive) {
       this.aiManager.isEnabled = false;
       this.aiManager.hideOpponents();
     } else {
@@ -1319,6 +1402,11 @@ if (this.multiplayerManager?.isActive) {
     this.checkpointManager.resetProgress();
     this.countdownElapsed = 0;
     this.isGridSweepActive = true;
+    this.driftScoringManager.reset();
+    this.pursuitManager.reset();
+    this.eliminationManager.reset();
+    this.speedTrapManager.reset();
+    this.speedTrapManager.setCircuitTraps(this.currentCircuit.id);
     this.replayManager.startRecording();
     this.soundManager.playGridSweepCue();
     this.setGameState(GameState.Countdown);
@@ -1359,6 +1447,14 @@ if (this.multiplayerManager?.isActive) {
       }
       if (this.currentEvent.mode === 'drift') {
         this.driftScoringManager.startSession();
+      } else if (this.currentEvent.mode === 'pursuit') {
+        if (this.vehicleController) {
+          this.pursuitManager.start(this.vehicleController.position, this.vehicleController.yawAngle);
+        }
+      } else if (this.currentEvent.mode === 'elimination') {
+        this.eliminationManager.start();
+      } else if (this.currentEvent.mode === 'speed_trap') {
+        this.speedTrapManager.start();
       }
       this.aiManager.startRace();
       this.setGameState(GameState.Racing);
@@ -1631,6 +1727,7 @@ if (this.multiplayerManager?.isActive) {
     this.garageScreen.dispose();
     this.settingsMenu.dispose();
     this.finishScreen.dispose();
+    this.pursuitManager.dispose();
     this.replayManager.dispose();
     this.tireFeedbackManager?.dispose();
     this.menuNavigator.dispose();

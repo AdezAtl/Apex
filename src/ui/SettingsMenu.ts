@@ -1,4 +1,4 @@
-import { GraphicsQuality, SettingsManager } from '../settings/SettingsManager';
+import { GraphicsQuality, MobileControlScheme, SettingsManager } from '../settings/SettingsManager';
 
 export interface SettingsMenuCallbacks {
   onQualityChange: (quality: GraphicsQuality) => void;
@@ -7,6 +7,8 @@ export interface SettingsMenuCallbacks {
   onEffectsVolumeChange?: (volume: number) => void;
   onMusicVolumeChange?: (volume: number) => void;
   onMuteToggle?: (isMuted: boolean) => void;
+  onControlSchemeChange?: (scheme: MobileControlScheme) => void;
+  onTouchScaleChange?: (scale: number) => void;
   onBack: () => void;
 }
 
@@ -18,6 +20,9 @@ export class SettingsMenu {
   private isNavigating: boolean = false;
 
   private qualityButtons: Map<GraphicsQuality, HTMLButtonElement> = new Map();
+  private schemeButtons: Map<MobileControlScheme, HTMLButtonElement> = new Map();
+  private touchScaleSlider: HTMLInputElement | null = null;
+  private touchScaleValueText: HTMLElement | null = null;
   private masterSlider: HTMLInputElement | null = null;
   private masterValueText: HTMLElement | null = null;
   private engineSlider: HTMLInputElement | null = null;
@@ -62,6 +67,30 @@ export class SettingsMenu {
               <button id="btn-quality-low" class="quality-btn" data-quality="low">LOW</button>
               <button id="btn-quality-medium" class="quality-btn" data-quality="medium">MEDIUM</button>
               <button id="btn-quality-high" class="quality-btn" data-quality="high">HIGH</button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-meta">
+              <span class="setting-title">DRIVING CONTROL SCHEME</span>
+              <span class="setting-subtext">On-screen buttons, Touch Sides (Auto-Gas), or Gyro Tilt</span>
+            </div>
+            <div class="quality-toggle-group control-scheme-grid">
+              <button id="btn-scheme-buttons" class="quality-btn" data-scheme="buttons">BUTTONS</button>
+              <button id="btn-scheme-touch-sides" class="quality-btn" data-scheme="touch_sides">TOUCH SIDES (AUTO)</button>
+              <button id="btn-scheme-tilt-manual" class="quality-btn" data-scheme="tilt_manual">TILT (MANUAL)</button>
+              <button id="btn-scheme-tilt-auto" class="quality-btn" data-scheme="tilt_auto">TILT (AUTO)</button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-meta">
+              <span class="setting-title">TOUCH BUTTON SIZE</span>
+              <span class="setting-subtext">Scale on-screen touch controls for ergonomics</span>
+            </div>
+            <div class="slider-control-row">
+              <input type="range" id="touch-scale-slider" min="70" max="140" step="5" class="apex-slider" />
+              <span id="touch-scale-percentage" class="slider-value">100%</span>
             </div>
           </div>
 
@@ -134,6 +163,41 @@ export class SettingsMenu {
     if (btnLow) this.qualityButtons.set('low', btnLow);
     if (btnMed) this.qualityButtons.set('medium', btnMed);
     if (btnHigh) this.qualityButtons.set('high', btnHigh);
+
+    const btnSchemeBtns = document.getElementById('btn-scheme-buttons') as HTMLButtonElement;
+    const btnSchemeTouch = document.getElementById('btn-scheme-touch-sides') as HTMLButtonElement;
+    const btnSchemeTiltMan = document.getElementById('btn-scheme-tilt-manual') as HTMLButtonElement;
+    const btnSchemeTiltAuto = document.getElementById('btn-scheme-tilt-auto') as HTMLButtonElement;
+    if (btnSchemeBtns) this.schemeButtons.set('buttons', btnSchemeBtns);
+    if (btnSchemeTouch) this.schemeButtons.set('touch_sides', btnSchemeTouch);
+    if (btnSchemeTiltMan) this.schemeButtons.set('tilt_manual', btnSchemeTiltMan);
+    if (btnSchemeTiltAuto) this.schemeButtons.set('tilt_auto', btnSchemeTiltAuto);
+
+    this.touchScaleSlider = document.getElementById('touch-scale-slider') as HTMLInputElement;
+    this.touchScaleValueText = document.getElementById('touch-scale-percentage');
+
+    this.schemeButtons.forEach((btn, scheme) => {
+      btn.addEventListener('click', () => {
+        this.selectControlScheme(scheme);
+        this.settingsManager.setMobileControlScheme(scheme);
+        if (this.callbacks.onControlSchemeChange) {
+          this.callbacks.onControlSchemeChange(scheme);
+        }
+      });
+    });
+
+    if (this.touchScaleSlider) {
+      this.touchScaleSlider.addEventListener('input', () => {
+        const val = parseInt(this.touchScaleSlider!.value, 10) / 100;
+        if (this.touchScaleValueText) {
+          this.touchScaleValueText.textContent = `${Math.round(val * 100)}%`;
+        }
+        this.settingsManager.setTouchControlScale(val);
+        if (this.callbacks.onTouchScaleChange) {
+          this.callbacks.onTouchScaleChange(val);
+        }
+      });
+    }
 
     this.masterSlider = document.getElementById('volume-slider') as HTMLInputElement;
     this.masterValueText = document.getElementById('volume-percentage');
@@ -238,7 +302,7 @@ export class SettingsMenu {
   private handleKeyDown(e: KeyboardEvent): void {
     if (!this.isVisible) return;
 
-    if (e.code === 'Escape' || e.code === 'Enter') {
+    if (e.code === 'Escape') {
       e.preventDefault();
       this.triggerBack();
     }
@@ -247,6 +311,15 @@ export class SettingsMenu {
   public syncFromSettings(): void {
     const s = this.settingsManager.getSettings();
     this.selectQuality(s.graphicsQuality);
+    this.selectControlScheme(s.mobileControlScheme || 'buttons');
+
+    if (this.touchScaleSlider) {
+      const scalePercent = Math.round((s.touchControlScale ?? 1.0) * 100);
+      this.touchScaleSlider.value = String(scalePercent);
+      if (this.touchScaleValueText) {
+        this.touchScaleValueText.textContent = `${scalePercent}%`;
+      }
+    }
 
     if (this.masterSlider) {
       this.masterSlider.value = String(Math.round(s.masterVolume * 100));
@@ -282,6 +355,16 @@ export class SettingsMenu {
   private selectQuality(quality: GraphicsQuality): void {
     this.qualityButtons.forEach((btn, q) => {
       if (q === quality) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  private selectControlScheme(scheme: MobileControlScheme): void {
+    this.schemeButtons.forEach((btn, s) => {
+      if (s === scheme) {
         btn.classList.add('active');
       } else {
         btn.classList.remove('active');

@@ -1,6 +1,7 @@
 import { GameplayCameraMode } from '../camera/CameraConfig';
 
 export type GraphicsQuality = 'low' | 'medium' | 'high';
+export type MobileControlScheme = 'buttons' | 'touch_sides' | 'tilt_manual' | 'tilt_auto';
 
 export interface GameSettings {
   graphicsQuality: GraphicsQuality;
@@ -12,6 +13,8 @@ export interface GameSettings {
   vehiclePaintId: string;
   selectedVehicleId: string;
   preferredCameraMode: GameplayCameraMode;
+  mobileControlScheme: MobileControlScheme;
+  touchControlScale: number; // 0.7 to 1.4 (default 1.0)
 }
 
 export class SettingsManager {
@@ -33,6 +36,8 @@ export class SettingsManager {
       vehiclePaintId: 'pearl_white',
       selectedVehicleId: 'mercedes_slc',
       preferredCameraMode: 'chase',
+      mobileControlScheme: 'buttons',
+      touchControlScale: 1.0,
     };
 
     try {
@@ -62,6 +67,12 @@ export class SettingsManager {
         }
         if (['chase', 'close', 'wide'].includes(parsed.preferredCameraMode)) {
           defaults.preferredCameraMode = parsed.preferredCameraMode;
+        }
+        if (['buttons', 'touch_sides', 'tilt_manual', 'tilt_auto'].includes(parsed.mobileControlScheme)) {
+          defaults.mobileControlScheme = parsed.mobileControlScheme;
+        }
+        if (typeof parsed.touchControlScale === 'number' && !isNaN(parsed.touchControlScale)) {
+          defaults.touchControlScale = Math.max(0.7, Math.min(1.5, parsed.touchControlScale));
         }
       }
     } catch {}
@@ -122,6 +133,24 @@ export class SettingsManager {
 
   public setMusicVolume(volume: number): void {
     this.settings.musicVolume = Math.max(0, Math.min(1.0, volume));
+    this.saveSettings();
+  }
+
+  public getMobileControlScheme(): MobileControlScheme {
+    return this.settings.mobileControlScheme || 'buttons';
+  }
+
+  public setMobileControlScheme(scheme: MobileControlScheme): void {
+    this.settings.mobileControlScheme = scheme;
+    this.saveSettings();
+  }
+
+  public getTouchControlScale(): number {
+    return typeof this.settings.touchControlScale === 'number' ? this.settings.touchControlScale : 1.0;
+  }
+
+  public setTouchControlScale(scale: number): void {
+    this.settings.touchControlScale = Math.max(0.7, Math.min(1.5, scale));
     this.saveSettings();
   }
 

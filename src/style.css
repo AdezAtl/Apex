@@ -1631,6 +1631,13 @@ button:focus-visible,
   letter-spacing: 0.5px;
 }
 
+.veh-switch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .compact-btn {
   padding: 6px 12px;
   font-size: 11px;
@@ -1717,6 +1724,17 @@ button:focus-visible,
   color: #ffffff;
   border-color: var(--accent-red);
   box-shadow: 0 2px 10px var(--accent-red-glow);
+}
+
+.control-scheme-grid {
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 8px;
+}
+
+.control-scheme-grid .quality-btn {
+  padding: 10px 6px;
+  font-size: 11px;
+  letter-spacing: 1px;
 }
 
 .slider-control-row {

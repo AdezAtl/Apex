@@ -118,6 +118,13 @@ export class EliminationManager {
         if (opp) {
           opp.forwardSpeed = 0;
           opp.isFinished = true;
+          if (opp.vehicle && opp.vehicle.rootNode) {
+            setTimeout(() => {
+              if (opp.vehicle && opp.vehicle.rootNode) {
+                opp.vehicle.rootNode.setEnabled(false);
+              }
+            }, 1200);
+          }
         }
 
         this.soundManager.playEliminationChime(false);

@@ -159,10 +159,7 @@ export class FinishScreen {
   private handleKeyDown(e: KeyboardEvent): void {
     if (!this.isVisible) return;
 
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      e.preventDefault();
-      this.triggerRetry();
-    } else if (e.code === 'Escape') {
+    if (e.code === 'Escape') {
       e.preventDefault();
       this.triggerMenu();
     }
@@ -176,7 +173,9 @@ export class FinishScreen {
     if (!this.container) return;
 
     const isDrift = event.mode === 'drift';
-    const result = isDrift
+    const isSpeedTrap = event.mode === 'speed_trap';
+    const isScoreBased = isDrift || isSpeedTrap;
+    const result = isScoreBased
       ? RecordManager.saveScore(event.id, finalResultValue)
       : RecordManager.saveTime(event.id, finalResultValue);
 
