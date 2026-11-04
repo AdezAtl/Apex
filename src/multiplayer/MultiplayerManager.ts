@@ -54,7 +54,7 @@ export class MultiplayerManager {
   // Remote vehicles (both remote human players AND client-side rendered AI)
   public remoteVehicles: Map<string, RemoteVehicle> = new Map();
   // Host-only simulated AI instances for empty LAN grid slots
-  private hostAiOpponents: Map<string, AIOpponent> = new Map();
+  public hostAiOpponents: Map<string, AIOpponent> = new Map();
   private hostWaypointManager: WaypointManager = new WaypointManager();
 
   public connectedPlayers: LobbyPlayer[] = [];
@@ -108,7 +108,7 @@ export class MultiplayerManager {
       if (state === 'error') {
         this.lobbyUI.setStatus(error || 'Network error encountered', 'error');
       } else if (state === 'disconnected' && this.isActive) {
-        this.lobbyUI.setStatus('Disconnected from server. Ensure LAN server is running on port 5050.', 'error');
+        this.lobbyUI.setStatus('Disconnected from race room. Check your room code and internet connection.', 'error');
       }
     });
 
@@ -117,7 +117,7 @@ export class MultiplayerManager {
       this.selfPlayerId = player.id;
       this.activeRoomConfig = config;
       this.connectedPlayers = [player];
-      this.lobbyUI.setStatus('LAN Room Created! Share your IP with other racers.', 'success');
+      this.lobbyUI.setStatus('Online Room Created! Share your Room Code with friends.', 'success');
       this.lobbyUI.setInLobby(config, [player], player.id, true, serverInfo);
     });
 
@@ -126,7 +126,7 @@ export class MultiplayerManager {
       this.selfPlayerId = selfId;
       this.activeRoomConfig = config;
       this.connectedPlayers = players;
-      this.lobbyUI.setStatus('Connected to Host! Waiting for race start.', 'success');
+      this.lobbyUI.setStatus('Connected to Room! Waiting for race start.', 'success');
       this.lobbyUI.setInLobby(config, players, selfId, false, serverInfo);
     });
 
@@ -395,7 +395,8 @@ export class MultiplayerManager {
     dt: number,
     localController: VehicleController | null,
     inputState: InputState,
-    isRacing: boolean = true
+    isRacing: boolean = true,
+    onCollision?: (impactSpeed: number) => void
   ): void {
     if (!this.isActive || !localController) return;
 
@@ -417,6 +418,108 @@ export class MultiplayerManager {
           ai.update(dt, this.hostWaypointManager, allCarPositions);
         } else {
           ai.updateVisuals(dt);
+        }
+      }
+    }
+
+    // Solid body vehicle-to-vehicle collision resolution (every frame for both Host & Client)
+    for (const [_, rv] of this.remoteVehicles) {
+      if (!rv.isLoaded) continue;
+
+      const hit = VehicleCollision.resolvePair(
+        localController.position,
+        localController.yawAngle,
+        localController.forwardSpeed,
+        localController.lateralSpeed,
+        localController.speedScale,
+        rv.position,
+        rv.yawAngle,
+        rv.forwardSpeed,
+        rv.lateralSpeed,
+        localController.speedScale
+      );
+
+      if (hit) {
+        localController.position.x = hit.posA.x;
+        localController.position.z = hit.posA.z;
+        localController.forwardSpeed = hit.newForwardSpeedA;
+        localController.lateralSpeed = hit.newLateralSpeedA;
+        localController.yawRate += hit.torqueA;
+
+        rv.position.x = hit.posB.x;
+        rv.position.z = hit.posB.z;
+        rv.forwardSpeed = hit.newForwardSpeedB;
+        rv.lateralSpeed = hit.newLateralSpeedB;
+
+        if (onCollision) {
+          onCollision(hit.impactSpeed);
+        }
+      }
+    }
+
+    if (this.isHost) {
+      // Local host vs Host AI opponents
+      for (const [_, ai] of this.hostAiOpponents) {
+        if (!ai.isLoaded || ai.isFinished) continue;
+
+        const hit = VehicleCollision.resolvePair(
+          localController.position,
+          localController.yawAngle,
+          localController.forwardSpeed,
+          localController.lateralSpeed,
+          localController.speedScale,
+          ai.position,
+          ai.yawAngle,
+          ai.forwardSpeed,
+          ai.lateralSpeed,
+          ai.speedScale
+        );
+
+        if (hit) {
+          localController.position.x = hit.posA.x;
+          localController.position.z = hit.posA.z;
+          localController.forwardSpeed = hit.newForwardSpeedA;
+          localController.lateralSpeed = hit.newLateralSpeedA;
+          localController.yawRate += hit.torqueA;
+
+          ai.position.x = hit.posB.x;
+          ai.position.z = hit.posB.z;
+          ai.forwardSpeed = hit.newForwardSpeedB;
+          ai.lateralSpeed = hit.newLateralSpeedB;
+
+          if (onCollision) {
+            onCollision(hit.impactSpeed);
+          }
+        }
+      }
+
+      // Host AI vs Remote Human Racers
+      for (const [_, ai] of this.hostAiOpponents) {
+        if (!ai.isLoaded || ai.isFinished) continue;
+        for (const [_, rv] of this.remoteVehicles) {
+          if (!rv.isLoaded) continue;
+          const hit = VehicleCollision.resolvePair(
+            ai.position,
+            ai.yawAngle,
+            ai.forwardSpeed,
+            ai.lateralSpeed,
+            ai.speedScale,
+            rv.position,
+            rv.yawAngle,
+            rv.forwardSpeed,
+            rv.lateralSpeed,
+            ai.speedScale
+          );
+          if (hit) {
+            ai.position.x = hit.posA.x;
+            ai.position.z = hit.posA.z;
+            ai.forwardSpeed = hit.newForwardSpeedA;
+            ai.lateralSpeed = hit.newLateralSpeedA;
+            rv.position.x = hit.posB.x;
+            rv.position.z = hit.posB.z;
+            rv.forwardSpeed = hit.newForwardSpeedB;
+            rv.lateralSpeed = hit.newLateralSpeedB;
+          }
         }
       }
     }
@@ -592,20 +695,25 @@ export class MultiplayerManager {
   private checkRacerGates(_id: string, prog: PlayerProgress, currentPos: Vector3): void {
     if (this.activeCheckpoints.length === 0) return;
 
-    prog.prevPosition.copyFrom(prog.currentPosition);
+    const prevPos = prog.currentPosition.clone();
+    prog.prevPosition.copyFrom(prevPos);
     prog.currentPosition.copyFrom(currentPos);
 
     const nextGateIdx = (prog.currentGate + 1) % this.activeCheckpoints.length;
     const targetCP = this.activeCheckpoints[nextGateIdx];
 
-    const perp = new Vector3(-targetCP.direction.z, 0, targetCP.direction.x);
+    const perp = new Vector3(-targetCP.direction.z, 0, targetCP.direction.x).normalize();
     const toCar = currentPos.subtract(targetCP.position);
     toCar.y = 0;
 
     const lateralDist = Math.abs(Vector3.Dot(toCar, perp));
-    const forwardDist = Vector3.Dot(toCar, targetCP.direction);
+    const dCur = Vector3.Dot(toCar, targetCP.direction);
+    const dPrev = Vector3.Dot(prevPos.subtract(targetCP.position), targetCP.direction);
 
-    if (lateralDist <= targetCP.width * 0.65 && forwardDist >= -2.5 && forwardDist <= 5.5) {
+    // Swept plane-crossing check: car was behind checkpoint plane and moved across it, or within tight threshold
+    const planeCrossed = (dPrev <= 0.6 && dCur >= -0.6) || (Math.abs(dCur) <= 3.8);
+
+    if (lateralDist <= targetCP.width * 0.85 && planeCrossed) {
       prog.currentGate = nextGateIdx;
 
       if (this.activeRoomConfig?.raceMode === 'sprint' && targetCP.id === 'CP_4_CAROUSEL_SHOOT') {

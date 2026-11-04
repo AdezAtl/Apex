@@ -7,6 +7,7 @@
 
 import { RoomConfig, LobbyPlayer, ServerInfo } from './MultiplayerTypes';
 import { VEHICLE_CATALOG } from '../vehicle/VehicleCatalog';
+import { ALL_CIRCUITS, getCircuitById } from '../tracks/TrackRegistry';
 
 export interface MultiplayerLobbyCallbacks {
   onHost: (
@@ -33,7 +34,6 @@ export class MultiplayerLobbyUI {
 
   private currentView: 'entry' | 'lobby' = 'entry';
   private entryMode: 'host' | 'join' = 'host';
-  private connectionType: 'p2p' | 'lan' = 'p2p';
 
   private hostRoomConfig: Partial<RoomConfig> = {
     trackId: 'forest_valley',
@@ -47,13 +47,11 @@ export class MultiplayerLobbyUI {
   private selectedVehicleId: string = 'mercedes_slc';
   private selectedPaintId: string = 'deep_blue';
   private playerName: string = 'Driver 1';
-  private hostAddress: string = `${typeof window !== 'undefined' ? window.location.hostname || 'localhost' : 'localhost'}:5050`;
   private p2pRoomCode: string = `APX-${Math.floor(1000 + Math.random() * 9000)}`;
   private joinRoomCode: string = '';
 
   private activeRoomConfig: RoomConfig | null = null;
   private activePlayers: LobbyPlayer[] = [];
-  private serverInfo: ServerInfo | null = null;
   private isLocalHost: boolean = false;
   private isLocalReady: boolean = false;
   private selfPlayerId: string | null = null;
@@ -65,18 +63,13 @@ export class MultiplayerLobbyUI {
     this.callbacks = callbacks;
     this.playerName = `Driver_${Math.floor(100 + Math.random() * 900)}`;
 
-    // Default to P2P online on HTTPS (e.g. Vercel)
     if (typeof window !== 'undefined') {
-      const isHttps = window.location.protocol === 'https:';
-      this.connectionType = isHttps ? 'p2p' : 'p2p';
-
       // Check URL query parameters for invite link (e.g. ?room=APX-5921)
       const params = new URLSearchParams(window.location.search);
       const roomParam = params.get('room') || params.get('join');
       if (roomParam) {
         this.joinRoomCode = roomParam.trim().toUpperCase();
         this.entryMode = 'join';
-        this.connectionType = 'p2p';
       }
     }
 
@@ -109,14 +102,13 @@ export class MultiplayerLobbyUI {
     players: LobbyPlayer[],
     selfId: string,
     isHost: boolean,
-    serverInfo?: ServerInfo
+    _serverInfo?: ServerInfo
   ): void {
     this.currentView = 'lobby';
     this.activeRoomConfig = config;
     this.activePlayers = players;
     this.selfPlayerId = selfId;
     this.isLocalHost = isHost;
-    if (serverInfo) this.serverInfo = serverInfo;
 
     const me = players.find((p) => p.id === selfId);
     this.isLocalReady = me ? me.isReady : false;
@@ -178,19 +170,9 @@ export class MultiplayerLobbyUI {
     this.container.innerHTML = `
       <div class="menu-card mp-card">
         <div class="panel-header text-center">
-          <span class="panel-badge cyan-badge">MULTIPLAYER RACING // ZERO-SETUP ONLINE & LAN</span>
+          <span class="panel-badge cyan-badge">MULTIPLAYER RACING // ONLINE ROOMS</span>
           <h2 class="panel-title large-title">PROJECT APEX MULTIPLAYER</h2>
           <span class="event-subtitle">Cross-Platform Real-Time Racing • Up to 4 Drivers</span>
-        </div>
-
-        <!-- Connection Type Selector: Online P2P vs Local LAN -->
-        <div class="mp-conn-type-bar" role="tablist">
-          <button id="btn-conn-p2p" class="mp-conn-type-btn ${this.connectionType === 'p2p' ? 'active' : ''}">
-            🌐 ONLINE ROOM (ROOM CODE)
-          </button>
-          <button id="btn-conn-lan" class="mp-conn-type-btn ${this.connectionType === 'lan' ? 'active' : ''}">
-            🔌 LOCAL LAN SERVER
-          </button>
         </div>
 
         <div id="mp-status-banner" class="mp-status-banner ${this.statusType}" style="display: ${this.statusMessage ? 'block' : 'none'};">
@@ -235,12 +217,13 @@ export class MultiplayerLobbyUI {
             <div class="mp-field-group">
               <label class="mp-field-label">CIRCUIT TRACK</label>
               <select id="select-host-track" class="mp-select">
-                <option value="forest_valley" ${this.hostRoomConfig.trackId === 'forest_valley' ? 'selected' : ''}>
-                  Forest Valley Circuit (980m Grand Course • 13m Road)
+                ${ALL_CIRCUITS.map(
+                  (c) => `
+                <option value="${c.id}" ${this.hostRoomConfig.trackId === c.id ? 'selected' : ''}>
+                  ${c.name} (${Math.round(c.measuredLengthMeters)}m)
                 </option>
-                <option value="azure_coast" ${this.hostRoomConfig.trackId === 'azure_coast' ? 'selected' : ''}>
-                  Azure Coast Circuit (940m Ocean Sweepers)
-                </option>
+                `
+                ).join('')}
               </select>
             </div>
 
@@ -269,45 +252,25 @@ export class MultiplayerLobbyUI {
               </label>
             </div>
 
-            ${
-              this.connectionType === 'p2p'
-                ? `
-              <div class="mp-field-group">
-                <label class="mp-field-label">ROOM CODE (SHARE WITH OTHER RACERS)</label>
-                <div class="mp-room-code-display">
-                  <input id="input-p2p-code" class="mp-input room-code-input" type="text" maxlength="12" value="${this.p2pRoomCode}" />
-                  <button id="btn-regen-code" class="apex-btn secondary-btn btn-sm" title="Generate New Room Code">↻ NEW</button>
-                </div>
-                <span class="mp-hint">Zero-setup WebRTC room. Share this code with friends on mobile, PC, or anywhere!</span>
+            <div class="mp-field-group">
+              <label class="mp-field-label">ROOM CODE (SHARE WITH OTHER RACERS)</label>
+              <div class="mp-room-code-display">
+                <input id="input-p2p-code" class="mp-input room-code-input" type="text" maxlength="12" value="${this.p2pRoomCode}" spellcheck="false" />
+                <button id="btn-copy-code" class="apex-btn secondary-btn btn-sm" type="button" title="Copy Room Code">📋 COPY</button>
+                <button id="btn-regen-code" class="apex-btn secondary-btn btn-sm" type="button" title="Generate New Room Code">↻ NEW</button>
               </div>
-            `
-                : `
-              <div class="mp-field-group">
-                <label class="mp-field-label">SERVER PORT / BINDING</label>
-                <input id="input-host-addr" class="mp-input" type="text" value="localhost:5050" placeholder="localhost:5050" />
-                <span class="mp-hint">Requires local LAN server running on port 5050 ('npm run server' in terminal).</span>
-              </div>
-            `
-            }
+              <span class="mp-hint">Zero-setup WebRTC room. Give this code to friends on mobile, PC, or another tab to race together!</span>
+            </div>
           `
               : `
-            ${
-              this.connectionType === 'p2p'
-                ? `
-              <div class="mp-field-group">
-                <label class="mp-field-label">ENTER HOST ROOM CODE</label>
-                <input id="input-p2p-join-code" class="mp-input room-code-input" type="text" maxlength="14" value="${this.joinRoomCode}" placeholder="e.g. APX-4821" autofocus />
-                <span class="mp-hint">Enter the 6-character Room Code displayed on the Host's lobby screen.</span>
+            <div class="mp-field-group">
+              <label class="mp-field-label">ENTER HOST ROOM CODE</label>
+              <div class="mp-room-code-display">
+                <input id="input-p2p-join-code" class="mp-input room-code-input" type="text" maxlength="14" value="${this.joinRoomCode}" placeholder="e.g. APX-4821" autofocus spellcheck="false" />
+                <button id="btn-paste-code" class="apex-btn secondary-btn btn-sm" type="button" title="Paste Room Code">📋 PASTE</button>
               </div>
-            `
-                : `
-              <div class="mp-field-group">
-                <label class="mp-field-label">HOST LAN IP ADDRESS & PORT</label>
-                <input id="input-join-addr" class="mp-input" type="text" value="${this.hostAddress}" placeholder="e.g. 192.168.1.105:5050" />
-                <span class="mp-hint">Enter the host computer's local IP address displayed on their lobby screen.</span>
-              </div>
-            `
-            }
+              <span class="mp-hint">Enter the 8-character Room Code displayed on the Host's screen.</span>
+            </div>
           `
           }
         </div>
@@ -315,15 +278,7 @@ export class MultiplayerLobbyUI {
         <div class="mp-actions-footer">
           <button id="btn-mp-back" class="apex-btn secondary-btn">← BACK TO MENU</button>
           <button id="btn-mp-primary-action" class="apex-btn cyan-btn">
-            ${
-              this.entryMode === 'host'
-                ? this.connectionType === 'p2p'
-                  ? '🏁 HOST ONLINE RACE'
-                  : 'CREATE LAN ROOM'
-                : this.connectionType === 'p2p'
-                ? '🚀 JOIN ONLINE RACE'
-                : 'CONNECT TO LAN HOST'
-            }
+            ${this.entryMode === 'host' ? '🏁 HOST RACE ROOM' : '🚀 JOIN RACE'}
           </button>
         </div>
       </div>
@@ -335,9 +290,9 @@ export class MultiplayerLobbyUI {
   private bindEntryEvents(): void {
     const tabHost = document.getElementById('btn-tab-host');
     const tabJoin = document.getElementById('btn-tab-join');
-    const btnP2P = document.getElementById('btn-conn-p2p');
-    const btnLAN = document.getElementById('btn-conn-lan');
     const btnRegen = document.getElementById('btn-regen-code');
+    const btnCopyCode = document.getElementById('btn-copy-code');
+    const btnPasteCode = document.getElementById('btn-paste-code');
     const inputName = document.getElementById('input-mp-name') as HTMLInputElement;
     const selectCar = document.getElementById('select-mp-car') as HTMLSelectElement;
     const btnBack = document.getElementById('btn-mp-back');
@@ -353,16 +308,39 @@ export class MultiplayerLobbyUI {
       this.render();
     });
 
-    btnP2P?.addEventListener('click', () => {
-      if (this.connectionType === 'p2p') return;
-      this.connectionType = 'p2p';
-      this.render();
+    btnCopyCode?.addEventListener('click', () => {
+      const codeInput = document.getElementById('input-p2p-code') as HTMLInputElement;
+      const code = codeInput ? codeInput.value.trim().toUpperCase() : this.p2pRoomCode;
+      if (code && navigator.clipboard) {
+        navigator.clipboard.writeText(code).then(() => {
+          if (btnCopyCode) btnCopyCode.textContent = '✓ COPIED!';
+          setTimeout(() => {
+            if (btnCopyCode) btnCopyCode.textContent = '📋 COPY';
+          }, 2000);
+        }).catch(() => {});
+      }
     });
 
-    btnLAN?.addEventListener('click', () => {
-      if (this.connectionType === 'lan') return;
-      this.connectionType = 'lan';
-      this.render();
+    btnPasteCode?.addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard) {
+          const text = await navigator.clipboard.readText();
+          const clean = text.trim().toUpperCase();
+          if (clean) {
+            const joinInput = document.getElementById('input-p2p-join-code') as HTMLInputElement;
+            if (joinInput) joinInput.value = clean;
+            this.joinRoomCode = clean;
+          }
+        }
+      } catch {
+        const text = prompt('Paste Room Code here:');
+        if (text) {
+          const clean = text.trim().toUpperCase();
+          const joinInput = document.getElementById('input-p2p-join-code') as HTMLInputElement;
+          if (joinInput) joinInput.value = clean;
+          this.joinRoomCode = clean;
+        }
+      }
     });
 
     btnRegen?.addEventListener('click', () => {
@@ -399,49 +377,33 @@ export class MultiplayerLobbyUI {
         const maxSelect = document.getElementById('select-host-max-players') as HTMLSelectElement;
         const aiCheck = document.getElementById('check-host-ai') as HTMLInputElement;
 
-        const isP2P = this.connectionType === 'p2p';
-        let hostAddr = '';
+        const codeInput = document.getElementById('input-p2p-code') as HTMLInputElement;
+        const hostAddr = codeInput?.value.trim().toUpperCase() || this.p2pRoomCode;
+        this.p2pRoomCode = hostAddr;
 
-        if (isP2P) {
-          const codeInput = document.getElementById('input-p2p-code') as HTMLInputElement;
-          hostAddr = codeInput?.value.trim().toUpperCase() || this.p2pRoomCode;
-          this.p2pRoomCode = hostAddr;
-        } else {
-          const addrInput = document.getElementById('input-host-addr') as HTMLInputElement;
-          hostAddr = addrInput?.value.trim() || 'localhost:5050';
-        }
-
+        const selectedCircuit = getCircuitById(trackSelect?.value || 'forest_valley');
         const roomConfig: Partial<RoomConfig> = {
           roomId: hostAddr,
-          trackId: trackSelect?.value || 'forest_valley',
-          trackName: trackSelect?.value === 'azure_coast' ? 'Azure Coast Circuit' : 'Forest Valley Circuit',
+          trackId: selectedCircuit.id,
+          trackName: selectedCircuit.name,
           raceMode: (modeSelect?.value as any) || 'circuit',
           maxPlayers: parseInt(maxSelect?.value || '4', 10),
           fillWithAI: aiCheck ? aiCheck.checked : true,
           lapCount: 1,
         };
 
-        this.setStatus(`Starting ${isP2P ? 'Online P2P Room ' + hostAddr : 'LAN Server on ' + hostAddr}...`, 'info');
-        await this.callbacks.onHost(roomConfig, playerInfo, hostAddr, isP2P);
+        this.setStatus(`Starting Online Room ${hostAddr}...`, 'info');
+        await this.callbacks.onHost(roomConfig, playerInfo, hostAddr, true);
       } else {
-        const isP2P = this.connectionType === 'p2p';
-        let targetAddr = '';
-
-        if (isP2P) {
-          const joinCodeInput = document.getElementById('input-p2p-join-code') as HTMLInputElement;
-          targetAddr = joinCodeInput?.value.trim().toUpperCase() || '';
-          if (!targetAddr) {
-            this.setStatus('Please enter the Host Room Code (e.g. APX-4821)', 'error');
-            return;
-          }
-          this.joinRoomCode = targetAddr;
-        } else {
-          const joinAddrInput = document.getElementById('input-join-addr') as HTMLInputElement;
-          targetAddr = joinAddrInput?.value.trim() || 'localhost:5050';
-          this.hostAddress = targetAddr;
+        const joinCodeInput = document.getElementById('input-p2p-join-code') as HTMLInputElement;
+        const targetAddr = joinCodeInput?.value.trim().toUpperCase() || '';
+        if (!targetAddr) {
+          this.setStatus('Please enter the Host Room Code (e.g. APX-4821)', 'error');
+          return;
         }
+        this.joinRoomCode = targetAddr;
 
-        this.setStatus(`Connecting to ${targetAddr}...`, 'info');
+        this.setStatus(`Connecting to Room ${targetAddr}...`, 'info');
         await this.callbacks.onJoin(targetAddr, playerInfo);
       }
     });
@@ -454,8 +416,7 @@ export class MultiplayerLobbyUI {
     const players = this.activePlayers;
     const maxSlots = cfg.maxPlayers || 4;
 
-    const isP2P = this.serverInfo?.port === 443 || cfg.roomId.startsWith('APX-');
-    const roomDisplay = isP2P ? cfg.roomId : (this.serverInfo ? `${this.serverInfo.localIp}:${this.serverInfo.port}` : 'localhost:5050');
+    const roomDisplay = cfg.roomId;
 
     const allHumansReady = players.every((p) => p.isHost || p.isReady);
     const canStart = this.isLocalHost && players.length >= 1 && allHumansReady;
@@ -463,17 +424,17 @@ export class MultiplayerLobbyUI {
     this.container.innerHTML = `
       <div class="menu-card mp-card mp-lobby-card">
         <div class="panel-header text-center">
-          <span class="panel-badge gold-badge">${isP2P ? 'ONLINE RACE LOBBY' : 'LAN RACE LOBBY'} // ${cfg.roomId}</span>
+          <span class="panel-badge gold-badge">ONLINE RACE LOBBY // ${cfg.roomId}</span>
           <h2 class="panel-title large-title">${cfg.trackName.toUpperCase()}</h2>
           <span class="event-subtitle">${cfg.raceMode.toUpperCase()} RACE • ${cfg.lapCount} LAP • ${players.length}/${maxSlots} DRIVERS</span>
         </div>
 
         <div class="mp-ip-banner">
           <div class="mp-ip-col">
-            <span class="mp-ip-label">${isP2P ? 'SHARE ROOM CODE WITH FRIENDS:' : 'HOST LAN IP ADDRESS:'}</span>
+            <span class="mp-ip-label">SHARE ROOM CODE WITH FRIENDS:</span>
             <div class="mp-code-row">
               <span class="mp-ip-val highlighted-code">${roomDisplay}</span>
-              ${isP2P ? `<button id="btn-copy-room-code" class="apex-btn secondary-btn btn-sm">📋 COPY CODE</button>` : ''}
+              <button id="btn-copy-room-code" class="apex-btn secondary-btn btn-sm" type="button">📋 COPY CODE</button>
             </div>
           </div>
           <div class="mp-status-pill ${this.isLocalHost ? 'host-pill' : 'client-pill'}">

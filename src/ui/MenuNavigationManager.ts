@@ -47,6 +47,7 @@ export class MenuNavigationManager {
     const overlaySelectors = [
       '#pause-overlay',
       '#settings-overlay',
+      '#settings-menu-overlay',
       '#career-results-overlay',
       '#finish-screen-overlay',
       '#multiplayer-lobby-overlay',

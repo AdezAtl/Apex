@@ -105,20 +105,20 @@ async function verifyArcadeInteractions() {
     if (!initialInfo.visible) throw new Error('Event select not visible');
     if (!initialInfo.circuitId) throw new Error('Circuit ID missing');
 
-    console.log('[Test 2] Switching to Azure Coast Circuit (Circuit 2)...');
-    await evaluate(`document.getElementById('track-tab-azure_coast').click()`);
+    console.log('[Test 2] Switching to Savanna Ridge Circuit (Circuit 2)...');
+    await evaluate(`document.getElementById('track-tab-savanna_ridge').click()`);
     await new Promise(r => setTimeout(r, 400));
 
-    const azureInfo = await evaluate(`(() => ({
+    const savannaInfo = await evaluate(`(() => ({
       circuitId: window.game.eventSelect.selectedCircuitId,
-      tabActive: document.getElementById('track-tab-azure_coast').classList.contains('active'),
+      tabActive: document.getElementById('track-tab-savanna_ridge').classList.contains('active'),
       trackName: document.getElementById('event-track-name').textContent,
       specLength: document.getElementById('spec-length').textContent
     }))()`);
 
-    console.log('  Azure state:', azureInfo);
-    if (azureInfo.circuitId !== 'azure_coast') throw new Error('Circuit did not switch to azure_coast');
-    if (!azureInfo.tabActive) throw new Error('Azure tab is not active');
+    console.log('  Savanna state:', savannaInfo);
+    if (savannaInfo.circuitId !== 'savanna_ridge') throw new Error('Circuit did not switch to savanna_ridge');
+    if (!savannaInfo.tabActive) throw new Error('Savanna tab is not active');
 
     console.log('[Test 3] Switching to Drift Challenge...');
     await evaluate(`document.getElementById('tab-event-2').click()`);

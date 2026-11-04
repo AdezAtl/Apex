@@ -19,6 +19,7 @@ export class SoundManager {
   private effectsVolume: number = 0.8;
   private musicVolume: number = 0.7;
   private isMuted: boolean = false;
+  private isWindowFocused: boolean = true;
 
   // Continuous Engine Synthesizer Nodes
   private engineOsc1: OscillatorNode | null = null;
@@ -69,6 +70,46 @@ export class SoundManager {
     this.effectsVolume = initialEffectsVolume;
     this.musicVolume = initialMusicVolume;
     this.isMuted = initialMuted;
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('blur', () => this.handleWindowFocus(false));
+      window.addEventListener('focus', () => this.handleWindowFocus(true));
+      document.addEventListener('visibilitychange', () => {
+        this.handleWindowFocus(!document.hidden);
+      });
+    }
+  }
+
+  private handleWindowFocus(isFocused: boolean): void {
+    this.isWindowFocused = isFocused;
+    if (!isFocused) {
+      // Game window lost focus or tab was hidden: completely silence all sound
+      if (this.ctx) {
+        if (this.masterGain) {
+          this.masterGain.gain.setValueAtTime(0, this.ctx.currentTime);
+        }
+        if (this.ctx.state === 'running') {
+          this.ctx.suspend().catch(() => {});
+        }
+      }
+      if (this.musicSynth) {
+        this.musicSynth.setMuted(true);
+      }
+    } else {
+      // Game window regained focus: restore audio if user has not muted
+      if (this.ctx) {
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+        if (this.masterGain) {
+          const effective = this.isMuted ? 0 : this.masterVolume;
+          this.masterGain.gain.setValueAtTime(effective, this.ctx.currentTime);
+        }
+      }
+      if (this.musicSynth) {
+        this.musicSynth.setMuted(this.isMuted);
+      }
+    }
   }
 
   /**
@@ -1033,7 +1074,7 @@ export class SoundManager {
 
   public setMasterVolume(vol: number): void {
     this.masterVolume = Math.max(0, Math.min(1.0, vol));
-    if (this.masterGain && this.ctx) {
+    if (this.masterGain && this.ctx && this.isWindowFocused) {
       const effective = this.isMuted ? 0 : this.masterVolume;
       this.masterGain.gain.setValueAtTime(effective, this.ctx.currentTime);
     }
@@ -1106,12 +1147,12 @@ export class SoundManager {
 
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
-    if (this.masterGain && this.ctx) {
+    if (this.masterGain && this.ctx && this.isWindowFocused) {
       const effective = this.isMuted ? 0 : this.masterVolume;
       this.masterGain.gain.setValueAtTime(effective, this.ctx.currentTime);
     }
     if (this.musicSynth) {
-      this.musicSynth.setMuted(this.isMuted);
+      this.musicSynth.setMuted(this.isMuted || !this.isWindowFocused);
     }
   }
 

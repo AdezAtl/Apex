@@ -7,6 +7,7 @@ import {
 } from '../career/CareerConfig';
 import { CareerManager } from '../career/CareerManager';
 import { VEHICLE_CATALOG, getVehicleById } from '../vehicle/VehicleCatalog';
+import { getCircuitById } from '../tracks/TrackRegistry';
 
 export interface CareerHubCallbacks {
   onStartEvent: (event: CareerEventDefinition) => void;
@@ -323,21 +324,21 @@ export class CareerHub {
       const isSelected = ev.id === this.selectedEventId;
       const isNextRecommended = ev.id === recommendedEventId;
 
-      // 5 Distinct Event History & Status States:
-      // 1. LOCKED
-      // 2. NEXT RECOMMENDED
-      // 3. NEW / AVAILABLE
-      // 4. COMPLETED (Medal Trophy)
-      // 5. REPLAY
       let topBadge = '';
       let cardStateClass = '';
+      let nodeClass = '';
+      let nodeIcon = '';
 
       if (!isUnlocked) {
         cardStateClass = 'locked is-locked';
         topBadge = '<span class="event-status-tag tag-locked">🔒 LOCKED</span>';
+        nodeClass = 'node-locked';
+        nodeIcon = '<span class="node-bullet locked-bullet"></span>';
       } else if (isNextRecommended && !isCompleted) {
         cardStateClass = 'is-recommended';
         topBadge = '<span class="event-status-tag tag-recommended">★ RECOMMENDED</span>';
+        nodeClass = 'node-recommended';
+        nodeIcon = '<span class="node-bullet recommended-bullet"></span>';
       } else if (isCompleted && record) {
         cardStateClass = 'is-completed';
         const medalSymbols: Record<string, string> = {
@@ -348,13 +349,18 @@ export class CareerHub {
         };
         const medalLabel = medalSymbols[record.medal] || '✓ COMPLETED';
         topBadge = `<span class="event-status-tag tag-completed medal-${record.medal}">${medalLabel} • REPLAY</span>`;
+        nodeClass = `node-medal node-${record.medal}`;
+        nodeIcon = record.medal === 'gold' ? '🏆' : record.medal === 'silver' ? '🥈' : record.medal === 'bronze' ? '🥉' : '✓';
       } else {
         // Unlocked and untouched
+        cardStateClass = 'is-ready';
         topBadge = '<span class="event-status-tag tag-new tag-ready">★ NEW</span>';
+        nodeClass = 'node-ready';
+        nodeIcon = '<span class="node-bullet ready-bullet"></span>';
       }
 
       const modeName = ev.mode === 'sprint' ? 'SPRINT RACE' : ev.mode === 'time_trial' ? 'TIME TRIAL' : 'DRIFT CHALLENGE';
-      const circuitName = ev.circuitId === 'azure_coast' ? 'Azure Coast GP' : 'Forest Valley GP';
+      const circuitName = getCircuitById(ev.circuitId).name;
 
       return `
         <article
@@ -364,12 +370,19 @@ export class CareerHub {
           aria-selected="${isSelected}"
           tabindex="${isUnlocked ? '0' : '-1'}"
         >
-          <div class="event-card-top">
-            <span class="event-card-mode">${modeName}</span>
-            ${topBadge}
+          <div class="timeline-indicator-track">
+            <span class="timeline-line-top"></span>
+            <div class="timeline-node ${nodeClass}">${nodeIcon}</div>
+            <span class="timeline-line-bottom"></span>
           </div>
-          <div class="event-card-name">${ev.name}</div>
-          <div class="event-card-circuit">${circuitName}</div>
+          <div class="timeline-card-body">
+            <div class="event-card-top">
+              <span class="event-card-mode">${modeName}</span>
+              ${topBadge}
+            </div>
+            <div class="event-card-name">${ev.name}</div>
+            <div class="event-card-circuit">${circuitName}</div>
+          </div>
         </article>
       `;
     }).join('');
@@ -481,65 +494,74 @@ export class CareerHub {
     let benchmarkRowsHtml = '';
     if (event.mode === 'sprint') {
       benchmarkRowsHtml = `
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar gold"></span>
-          <span class="benchmark-trophy">🏆</span>
-          <span class="benchmark-pos tabular-nums">1ST PLACE</span>
-          <span class="benchmark-tier">GOLD TROPHY</span>
+        <div class="benchmark-badge-row tier-gold">
+          <div class="benchmark-tier-pill gold">
+            <span class="benchmark-trophy">🏆</span>
+            <span class="benchmark-tier-name">GOLD TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill gold tabular-nums">1ST PLACE</span>
         </div>
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar silver"></span>
-          <span class="benchmark-trophy">🥈</span>
-          <span class="benchmark-pos tabular-nums">2ND PLACE</span>
-          <span class="benchmark-tier">SILVER TROPHY</span>
+        <div class="benchmark-badge-row tier-silver">
+          <div class="benchmark-tier-pill silver">
+            <span class="benchmark-trophy">🥈</span>
+            <span class="benchmark-tier-name">SILVER TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill silver tabular-nums">2ND PLACE</span>
         </div>
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar bronze"></span>
-          <span class="benchmark-trophy">🥉</span>
-          <span class="benchmark-pos tabular-nums">3RD PLACE</span>
-          <span class="benchmark-tier">BRONZE TROPHY</span>
+        <div class="benchmark-badge-row tier-bronze">
+          <div class="benchmark-tier-pill bronze">
+            <span class="benchmark-trophy">🥉</span>
+            <span class="benchmark-tier-name">BRONZE TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill bronze tabular-nums">3RD PLACE</span>
         </div>
       `;
     } else if (event.mode === 'time_trial' && event.targetBenchmark) {
       benchmarkRowsHtml = `
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar gold"></span>
-          <span class="benchmark-trophy">🏆</span>
-          <span class="benchmark-pos tabular-nums">&lt; ${event.targetBenchmark.gold.toFixed(2)}s</span>
-          <span class="benchmark-tier">GOLD TROPHY</span>
+        <div class="benchmark-badge-row tier-gold">
+          <div class="benchmark-tier-pill gold">
+            <span class="benchmark-trophy">🏆</span>
+            <span class="benchmark-tier-name">GOLD TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill gold tabular-nums">&lt; ${event.targetBenchmark.gold.toFixed(2)}s</span>
         </div>
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar silver"></span>
-          <span class="benchmark-trophy">🥈</span>
-          <span class="benchmark-pos tabular-nums">&lt; ${event.targetBenchmark.silver.toFixed(2)}s</span>
-          <span class="benchmark-tier">SILVER TROPHY</span>
+        <div class="benchmark-badge-row tier-silver">
+          <div class="benchmark-tier-pill silver">
+            <span class="benchmark-trophy">🥈</span>
+            <span class="benchmark-tier-name">SILVER TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill silver tabular-nums">&lt; ${event.targetBenchmark.silver.toFixed(2)}s</span>
         </div>
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar bronze"></span>
-          <span class="benchmark-trophy">🥉</span>
-          <span class="benchmark-pos tabular-nums">&lt; ${event.targetBenchmark.bronze.toFixed(2)}s</span>
-          <span class="benchmark-tier">BRONZE TROPHY</span>
+        <div class="benchmark-badge-row tier-bronze">
+          <div class="benchmark-tier-pill bronze">
+            <span class="benchmark-trophy">🥉</span>
+            <span class="benchmark-tier-name">BRONZE TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill bronze tabular-nums">&lt; ${event.targetBenchmark.bronze.toFixed(2)}s</span>
         </div>
       `;
     } else if (event.mode === 'drift' && event.targetBenchmark) {
       benchmarkRowsHtml = `
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar gold"></span>
-          <span class="benchmark-trophy">🏆</span>
-          <span class="benchmark-pos tabular-nums">&ge; ${event.targetBenchmark.gold.toLocaleString()} PTS</span>
-          <span class="benchmark-tier">GOLD TROPHY</span>
+        <div class="benchmark-badge-row tier-gold">
+          <div class="benchmark-tier-pill gold">
+            <span class="benchmark-trophy">🏆</span>
+            <span class="benchmark-tier-name">GOLD TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill gold tabular-nums">&ge; ${event.targetBenchmark.gold.toLocaleString()} PTS</span>
         </div>
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar silver"></span>
-          <span class="benchmark-trophy">🥈</span>
-          <span class="benchmark-pos tabular-nums">&ge; ${event.targetBenchmark.silver.toLocaleString()} PTS</span>
-          <span class="benchmark-tier">SILVER TROPHY</span>
+        <div class="benchmark-badge-row tier-silver">
+          <div class="benchmark-tier-pill silver">
+            <span class="benchmark-trophy">🥈</span>
+            <span class="benchmark-tier-name">SILVER TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill silver tabular-nums">&ge; ${event.targetBenchmark.silver.toLocaleString()} PTS</span>
         </div>
-        <div class="benchmark-row">
-          <span class="benchmark-accent-bar bronze"></span>
-          <span class="benchmark-trophy">🥉</span>
-          <span class="benchmark-pos tabular-nums">&ge; ${event.targetBenchmark.bronze.toLocaleString()} PTS</span>
-          <span class="benchmark-tier">BRONZE TROPHY</span>
+        <div class="benchmark-badge-row tier-bronze">
+          <div class="benchmark-tier-pill bronze">
+            <span class="benchmark-trophy">🥉</span>
+            <span class="benchmark-tier-name">BRONZE TROPHY</span>
+          </div>
+          <span class="benchmark-target-pill bronze tabular-nums">&ge; ${event.targetBenchmark.bronze.toLocaleString()} PTS</span>
         </div>
       `;
     }
@@ -548,12 +570,16 @@ export class CareerHub {
     const objectivesHtml = event.objectives.map((obj) => {
       const isMet = record?.completedObjectives.includes(obj.id) || false;
       return `
-        <div class="objective-row">
-          <div class="objective-left">
-            <span class="hollow-checkbox ${isMet ? 'checked' : ''}"></span>
+        <div class="objective-badge-item ${isMet ? 'is-completed' : ''}">
+          <div class="objective-badge-left">
+            <span class="objective-check-badge ${isMet ? 'checked' : ''}">
+              ${isMet ? '✓' : '—'}
+            </span>
             <span class="objective-text">${obj.description}</span>
           </div>
-          <span class="objective-cr tabular-nums">+${obj.bonusCredits.toLocaleString()} CR</span>
+          <span class="objective-cr-badge tabular-nums ${isMet ? 'badge-claimed' : ''}">
+            +${obj.bonusCredits.toLocaleString()} CR
+          </span>
         </div>
       `;
     }).join('');
@@ -564,12 +590,19 @@ export class CareerHub {
       const bestFormatted = event.mode === 'drift'
         ? `${Math.round(record.bestResult).toLocaleString()} PTS`
         : `${(record.bestResult).toFixed(2)}s`;
+      const medalTitle = record.medal === 'gold' ? '🏆 GOLD RECORD' : record.medal === 'silver' ? '🥈 SILVER RECORD' : '🥉 BRONZE RECORD';
       bestRecordHtml = `
-        <div class="detail-tile pb-tile">
-          <span class="tile-label">PERSONAL RECORD</span>
-          <div class="pb-row">
-            <span class="pb-val tabular-nums">${bestFormatted}</span>
-            <span class="pb-medal medal-${record.medal}">${record.medal.toUpperCase()}</span>
+        <div class="detail-section-card pb-section-card">
+          <div class="section-card-header">
+            <span class="section-card-title">PERSONAL RECORD</span>
+            <span class="pb-status-pill medal-${record.medal}">${medalTitle}</span>
+          </div>
+          <div class="pb-card-body">
+            <div class="pb-stat-group">
+              <span class="pb-stat-label">OFFICIAL BENCHMARK RESULT</span>
+              <span class="pb-stat-val tabular-nums">${bestFormatted}</span>
+            </div>
+            <div class="pb-badge-tag">VERIFIED ENTRY</div>
           </div>
         </div>
       `;
@@ -593,7 +626,7 @@ export class CareerHub {
     const repRewardValue = isCompleted
       ? Math.floor(event.reputationReward * 0.20)
       : event.reputationReward;
-    const repSubLabel = isCompleted ? '<span class="rep-replay-note">(REPLAY 20%)</span>' : '';
+    const repSubLabel = isCompleted ? '<span class="rep-replay-badge">REPLAY 20%</span>' : '';
 
     const diffDisplay = event.aiDifficulty.replace('_', ' ').toUpperCase();
 
@@ -608,31 +641,48 @@ export class CareerHub {
         <p class="detail-event-desc">${event.description}</p>
       </div>
 
-      <!-- Row A — Reward Summary Strip -->
+      <!-- Row A — High-Contrast Reward Badges -->
       <div class="row-rewards">
-        <div class="detail-tile">
-          <span class="tile-label">CREDIT REWARD</span>
-          <span class="reward-value cr tabular-nums">${event.rewards.gold.toLocaleString()} CR</span>
+        <div class="reward-badge-card reward-cr">
+          <div class="reward-badge-top">
+            <span class="reward-chip cr-chip">PURSE</span>
+            <span class="reward-sub-label">GOLD TARGET</span>
+          </div>
+          <div class="reward-amount cr tabular-nums">
+            ${event.rewards.gold.toLocaleString()} <span class="reward-unit">CR</span>
+          </div>
         </div>
-        <div class="detail-tile">
-          <span class="tile-label">REPUTATION REWARD</span>
-          <span class="reward-value rep tabular-nums">+${repRewardValue.toLocaleString()} REP ${repSubLabel}</span>
+        <div class="reward-badge-card reward-rep">
+          <div class="reward-badge-top">
+            <span class="reward-chip rep-chip">STANDINGS</span>
+            ${isCompleted ? repSubLabel : '<span class="reward-sub-label">CHAMPIONSHIP</span>'}
+          </div>
+          <div class="reward-amount rep tabular-nums">
+            +${repRewardValue.toLocaleString()} <span class="reward-unit">REP</span>
+          </div>
         </div>
       </div>
 
       ${bestRecordHtml}
 
-      <!-- Row B — Trophies & Objectives -->
-      <div class="detail-tile">
-        <span class="tile-label">TARGET BENCHMARKS &amp; TROPHIES</span>
-        <div class="benchmark-list">
+      <!-- Row B — Target Benchmarks & Trophies -->
+      <div class="detail-section-card">
+        <div class="section-card-header">
+          <span class="section-card-title">TARGET BENCHMARKS &amp; TROPHIES</span>
+          <span class="section-card-sub">REGULATION TARGETS</span>
+        </div>
+        <div class="benchmark-badges-list">
           ${benchmarkRowsHtml}
         </div>
       </div>
 
-      <div class="detail-tile">
-        <span class="tile-label">BONUS PERFORMANCE OBJECTIVES</span>
-        <div class="objective-list">
+      <!-- Row C — Bonus Performance Objectives -->
+      <div class="detail-section-card">
+        <div class="section-card-header">
+          <span class="section-card-title">BONUS PERFORMANCE OBJECTIVES</span>
+          <span class="section-card-sub">SUPPLEMENTARY PURSE</span>
+        </div>
+        <div class="objective-badges-list">
           ${objectivesHtml}
         </div>
       </div>

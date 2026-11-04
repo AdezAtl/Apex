@@ -38,6 +38,7 @@ import { MultiplayerManager } from '../multiplayer/MultiplayerManager';
 import { requestFullscreenIfMobile } from '../utils/Fullscreen';
 import { MenuNavigationManager } from '../ui/MenuNavigationManager';
 import { PursuitManager } from '../events/PursuitManager';
+import { AssetCacheManager } from './AssetCacheManager';
 import { EliminationManager } from '../events/EliminationManager';
 import { SpeedTrapManager } from '../events/SpeedTrapManager';
 
@@ -99,6 +100,10 @@ export class Game {
   private finishCinematicElapsed: number = 0;
   private isFinishSweepActive: boolean = false;
   private cachedFinishPositionDisplay?: string;
+  private cachedFinishRankNumber: number = 1;
+  private currentLiveRank: number = 1;
+  private currentLiveRankFormatted: string = '1ST';
+  private currentLiveTotalRacers: number = 4;
   private cachedResultValue: number = 0;
 
   // Debug HUD elements
@@ -529,6 +534,8 @@ export class Game {
         this.loadingScreen.hide();
         // Transition to Main Menu upon boot
         this.setGameState(GameState.MainMenu);
+        // Persist 3D assets, textures, and models to local browser cache storage for instant subsequent loads
+        AssetCacheManager.getInstance().preloadAssetsInBackground();
       }, 300);
 
       // Window-level user gesture unlock for Web Audio & Mobile Fullscreen
@@ -690,9 +697,13 @@ export class Game {
             // Record frame for replay system
             this.replayManager.recordFrame(dt, this.vehicleController, this.aiManager.opponents);
 
-            // Multiplayer network update & remote vehicle interpolation
+            // Multiplayer network update & remote vehicle interpolation & solid body collision
             if (this.multiplayerManager?.isActive) {
-              this.multiplayerManager.update(dt, this.vehicleController, inputState);
+              this.multiplayerManager.update(dt, this.vehicleController, inputState, true, (impactSpeed) => {
+                this.soundManager.playCollisionImpact(impactSpeed);
+                this.sceneManager.triggerCameraShake(Math.min(0.9, impactSpeed * 0.12));
+                this.inputManager.triggerHaptic(0.4, Math.min(1.0, impactSpeed * 0.15), 180);
+              });
             }
 
             // Solid body vehicle-to-vehicle collision resolution (player vs AI and AI vs AI)
@@ -884,6 +895,13 @@ export class Game {
                   : 0);
               posRank = this.getMultiplayerRank();
               posTotal = `/ ${totalMpRacers}`;
+              this.currentLiveRank = parseInt(posRank) || 1;
+              this.currentLiveRankFormatted = posRank;
+              this.currentLiveTotalRacers = totalMpRacers;
+            } else {
+              this.currentLiveRank = rankInfo.rank;
+              this.currentLiveRankFormatted = rankInfo.rankFormatted;
+              this.currentLiveTotalRacers = rankInfo.totalRacers;
             }
 
             // HUD update
@@ -1182,17 +1200,7 @@ export class Game {
             : this.currentEvent.mode === 'speed_trap'
             ? this.speedTrapManager.getAggregateSpeed()
             : this.raceTimeSeconds;
-        let finishPositionDisplay: string | undefined = this.cachedFinishPositionDisplay;
-        if (!finishPositionDisplay && this.aiManager.isEnabled && this.vehicleController) {
-          const playerProgress = this.aiManager.waypointManager.getProgressDistance(
-            this.vehicleController.position,
-            this.checkpointManager.lapCount + 1
-          );
-          const rankInfo = this.aiManager.getPlayerRank(playerProgress);
-          finishPositionDisplay = `${rankInfo.rankFormatted} PLACE / ${rankInfo.totalRacers} DRIVERS`;
-        }
         this.cachedResultValue = resultValue;
-        this.cachedFinishPositionDisplay = finishPositionDisplay;
 
         if (!this.isFinishSweepActive) {
           this.showFinishScreen();
@@ -1276,15 +1284,7 @@ export class Game {
 
   public showFinishScreen(): void {
     if (this.isCareerSession && this.activeCareerEvent) {
-      let positionRank = 1;
-      if (this.aiManager.isEnabled && this.vehicleController) {
-        const playerProgress = this.aiManager.waypointManager.getProgressDistance(
-          this.vehicleController.position,
-          this.checkpointManager.lapCount + 1
-        );
-        const rankInfo = this.aiManager.getPlayerRank(playerProgress);
-        positionRank = rankInfo.rank;
-      }
+      const positionRank = this.cachedFinishRankNumber || 1;
 
       const completionResult = this.careerManager.completeEvent({
         eventId: this.activeCareerEvent.id,
@@ -1300,15 +1300,20 @@ export class Game {
         this.activeCareerEvent,
         this.cachedResultValue,
         completionResult,
-        this.cachedFinishPositionDisplay,
+        this.cachedFinishPositionDisplay || `${this.currentLiveRankFormatted} PLACE`,
         this.replayManager.hasRecordedData()
       );
       this.setGameState(GameState.CareerResults);
     } else {
+      const finishDisplay =
+        this.cachedFinishPositionDisplay ||
+        (this.aiManager.isEnabled || (this.multiplayerManager?.isActive ?? false)
+          ? `${this.currentLiveRankFormatted} / ${this.currentLiveTotalRacers}`
+          : undefined);
       this.finishScreen.show(
         this.cachedResultValue,
         this.currentEvent,
-        this.cachedFinishPositionDisplay
+        finishDisplay
       );
     }
   }
@@ -1402,6 +1407,11 @@ export class Game {
     this.checkpointManager.resetProgress();
     this.countdownElapsed = 0;
     this.isGridSweepActive = true;
+    this.cachedFinishPositionDisplay = undefined;
+    this.cachedFinishRankNumber = 1;
+    this.currentLiveRank = 1;
+    this.currentLiveRankFormatted = '1ST';
+    this.currentLiveTotalRacers = 4;
     this.driftScoringManager.reset();
     this.pursuitManager.reset();
     this.eliminationManager.reset();
@@ -1493,6 +1503,19 @@ export class Game {
     this.soundManager.playFinishChime();
     this.isFinishSweepActive = true;
     this.finishCinematicElapsed = 0;
+
+    // Snapshot exact finish position at the moment the finish line is crossed
+    this.cachedFinishRankNumber = this.currentLiveRank;
+    if (!this.cachedFinishPositionDisplay) {
+      if (this.currentEvent.mode === 'drift') {
+        this.cachedFinishPositionDisplay = `DRIFT SCORE • ${this.driftScoringManager.totalBankedScore.toLocaleString()} PTS`;
+      } else if (this.currentEvent.mode === 'speed_trap') {
+        this.cachedFinishPositionDisplay = `RADAR TRAPS • ${Math.round(this.speedTrapManager.getAggregateSpeed())} KM/H`;
+      } else if (this.aiManager.isEnabled || (this.multiplayerManager?.isActive ?? false)) {
+        this.cachedFinishPositionDisplay = `${this.currentLiveRankFormatted} PLACE`;
+      }
+    }
+
     this.setGameState(GameState.Finished);
   }
 
@@ -1528,6 +1551,8 @@ export class Game {
 
   public restartRace(): void {
     this.clearCountdownTimeouts();
+    this.cachedFinishPositionDisplay = undefined;
+    this.cachedFinishRankNumber = 1;
     if (this.isCareerSession && this.activeCareerEvent) {
       this.careerSessionToken = `${this.activeCareerEvent.id}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       this.careerWallCollisions = 0;
@@ -1569,16 +1594,38 @@ export class Game {
 
   private getMultiplayerRank(): string {
     if (!this.multiplayerManager?.isActive || !this.vehicleController) return '1ST';
+
+    const playerProgress = this.aiManager.waypointManager.getProgressDistance(
+      this.vehicleController.position,
+      this.checkpointManager.lapCount + 1
+    );
+
     let rank = 1;
     for (const [_, rv] of this.multiplayerManager.remoteVehicles) {
-      if (rv.currentLap > this.checkpointManager.lapCount + 1) {
+      if (rv.isFinished) {
         rank++;
-      } else if (rv.currentLap === this.checkpointManager.lapCount + 1) {
-        if (rv.currentGate > this.checkpointManager.getCurrentGateNumber()) {
+      } else {
+        const rvProgress = this.aiManager.waypointManager.getProgressDistance(rv.position, rv.currentLap);
+        if (rvProgress > playerProgress) {
           rank++;
         }
       }
     }
+
+    if (this.multiplayerManager.isHost) {
+      for (const [_, ai] of this.multiplayerManager.hostAiOpponents) {
+        if (!ai.isLoaded) continue;
+        if (ai.isFinished) {
+          rank++;
+        } else {
+          const aiProgress = this.aiManager.waypointManager.getProgressDistance(ai.position, ai.lapCount);
+          if (aiProgress > playerProgress) {
+            rank++;
+          }
+        }
+      }
+    }
+
     switch (rank) {
       case 1:
         return '1ST';

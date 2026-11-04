@@ -120,12 +120,8 @@ export class InputManager {
 
       <!-- Touch Sides Steering Zones (Only active in 'touch_sides' scheme) -->
       <div class="apex-touch-sides-container">
-        <div class="apex-touch-side-zone zone-left" data-action="steerLeft">
-          <div class="side-zone-indicator">◀ STEER LEFT</div>
-        </div>
-        <div class="apex-touch-side-zone zone-right" data-action="steerRight">
-          <div class="side-zone-indicator">STEER RIGHT ▶</div>
-        </div>
+        <div class="apex-touch-side-zone zone-left" data-action="steerLeft"></div>
+        <div class="apex-touch-side-zone zone-right" data-action="steerRight"></div>
       </div>
 
       <!-- Left Thumb Cluster: Nitro, Steer Left/Right, or Tilt-Auto Brake -->

@@ -174,37 +174,6 @@ export const RACE_EVENTS: RaceEventConfig[] = [
     finishCheckpointId: 'CP_4_CAROUSEL_SHOOT',
     mapType: 'sprint',
   },
-  {
-    id: 'forest_drift_90s',
-    mode: 'drift',
-    name: 'Forest Drift Challenge',
-    subtitle: 'Forest Valley Circuit • 90s Freestyle Arena',
-    badgeText: 'DRIFT CHALLENGE',
-    lapsBadge: '90S TIMED FREESTYLE',
-    description:
-      'Score maximum drift points across the complete 980-meter circuit in a 90-second session. Maintain speed and slip angle through the dedicated drift sweepers and chain transitions to grow your combo.',
-    specs: {
-      length: '980 M',
-      sectors: 'OPEN ARENA',
-      surface: 'ASPHALT',
-    },
-    startPosition: new Vector3(0, 0.05, -2.0),
-    startYaw: 0,
-    checkpointIds: [
-      'CP_1_NORTH_ENTRY',
-      'CP_2_EAST_CHUTE',
-      'CP_3_INFIELD_DESCENT',
-      'CP_4_CAROUSEL_SHOOT',
-      'CP_5_BACK_STRAIGHT_LAUNCH',
-      'CP_6_BACK_STRAIGHT_BRAKING',
-      'CP_7_ARENA_DRIFT_SWEEPER',
-      'CP_8_WEST_STRAIGHT_ENTRY',
-      'CP_9_WEST_STRAIGHT_MID',
-      'CP_0_START_FINISH',
-    ],
-    finishCheckpointId: '',
-    mapType: 'drift',
-  },
 ];
 
 export const DEFAULT_EVENT: RaceEventConfig = RACE_EVENTS[0];

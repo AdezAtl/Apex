@@ -37,18 +37,25 @@ export class SpeedTrapManager {
   }
 
   public setCircuitTraps(circuitId: string): void {
-    if (circuitId === 'savanna_ridge') {
+    if (circuitId === 'akobo_highway') {
+      this.trapCheckpointIds = [
+        'AK_CP_3',
+        'AK_CP_7',
+        'AK_CP_10',
+        'AK_CP_15',
+      ];
+    } else if (circuitId === 'eleyele_ring') {
+      this.trapCheckpointIds = [
+        'EY_CP_2',
+        'EY_CP_6',
+        'EY_CP_10',
+      ];
+    } else if (circuitId === 'savanna_ridge') {
       this.trapCheckpointIds = [
         'SR_CP_1_EAST_CHUTE',
         'SR_CP_4_WEST_RIDGE',
         'SR_CP_7_SOUTH_HIGHWAY_WEST',
         'SR_CP_8_SOUTH_HIGHWAY_MID',
-      ];
-    } else if (circuitId === 'azure_coast') {
-      this.trapCheckpointIds = [
-        'AZ_CP_1_NORTH_APPROACH',
-        'AZ_CP_3_CLIFF_STRAIGHT',
-        'AZ_CP_6_MARINA_DROP',
       ];
     } else {
       // Default to Forest Valley

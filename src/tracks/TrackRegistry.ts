@@ -1,12 +1,14 @@
 import { CircuitDefinition } from './TrackConfig';
 import { ForestValleyCircuit } from './ForestValleyCircuit';
-import { AzureCoastCircuit } from './AzureCoastCircuit';
 import { SavannaRidgeCircuit } from './SavannaRidgeCircuit';
+import { AkoboHighwayCircuit } from './AkoboHighwayCircuit';
+import { EleyeleRingCircuit } from './EleyeleRingCircuit';
 
 export const ALL_CIRCUITS: CircuitDefinition[] = [
   ForestValleyCircuit,
-  AzureCoastCircuit,
   SavannaRidgeCircuit,
+  AkoboHighwayCircuit,
+  EleyeleRingCircuit,
 ];
 
 export const DEFAULT_CIRCUIT_ID = 'forest_valley';

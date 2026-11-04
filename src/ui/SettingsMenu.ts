@@ -43,7 +43,7 @@ export class SettingsMenu {
   }
 
   private createDOM(): void {
-    const existing = document.getElementById('settings-menu-overlay');
+    const existing = document.getElementById('settings-menu-overlay') || document.getElementById('settings-overlay');
     if (existing) existing.remove();
 
     this.container = document.createElement('div');
@@ -52,105 +52,124 @@ export class SettingsMenu {
 
     this.container.innerHTML = `
       <div class="menu-card settings-card">
-        <div class="panel-header">
-          <span class="panel-badge">CONFIGURATION // SYSTEM</span>
-          <h2 class="panel-title">SETTINGS</h2>
-        </div>
-
-        <div class="settings-group">
-          <div class="setting-item">
-            <div class="setting-meta">
-              <span class="setting-title">GRAPHICS QUALITY</span>
-              <span class="setting-subtext">Controls internal buffer scaling, shadow filtering, and camera shake load</span>
-            </div>
-            <div class="quality-toggle-group">
-              <button id="btn-quality-low" class="quality-btn" data-quality="low">LOW</button>
-              <button id="btn-quality-medium" class="quality-btn" data-quality="medium">MEDIUM</button>
-              <button id="btn-quality-high" class="quality-btn" data-quality="high">HIGH</button>
-            </div>
+        <!-- Top Unified Header with [X] Close -->
+        <header class="settings-modal-header">
+          <div class="settings-header-meta">
+            <span class="panel-badge">CONFIGURATION // SYSTEM</span>
+            <h2 class="panel-title">SETTINGS</h2>
           </div>
-
-          <div class="setting-item">
-            <div class="setting-meta">
-              <span class="setting-title">DRIVING CONTROL SCHEME</span>
-              <span class="setting-subtext">On-screen buttons, Touch Sides (Auto-Gas), or Gyro Tilt</span>
-            </div>
-            <div class="quality-toggle-group control-scheme-grid">
-              <button id="btn-scheme-buttons" class="quality-btn" data-scheme="buttons">BUTTONS</button>
-              <button id="btn-scheme-touch-sides" class="quality-btn" data-scheme="touch_sides">TOUCH SIDES (AUTO)</button>
-              <button id="btn-scheme-tilt-manual" class="quality-btn" data-scheme="tilt_manual">TILT (MANUAL)</button>
-              <button id="btn-scheme-tilt-auto" class="quality-btn" data-scheme="tilt_auto">TILT (AUTO)</button>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-meta">
-              <span class="setting-title">TOUCH BUTTON SIZE</span>
-              <span class="setting-subtext">Scale on-screen touch controls for ergonomics</span>
-            </div>
-            <div class="slider-control-row">
-              <input type="range" id="touch-scale-slider" min="70" max="140" step="5" class="apex-slider" />
-              <span id="touch-scale-percentage" class="slider-value">100%</span>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-meta">
-              <span class="setting-title">MASTER AUDIO VOLUME</span>
-              <span class="setting-subtext">Overall game audio output level</span>
-            </div>
-            <div class="slider-control-row">
-              <input type="range" id="volume-slider" min="0" max="100" step="5" class="apex-slider" />
-              <span id="volume-percentage" class="slider-value">80%</span>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-meta">
-              <span class="setting-title">ENGINE AUDIO VOLUME</span>
-              <span class="setting-subtext">Procedural multi-harmonic powertrain roar & intake resonance</span>
-            </div>
-            <div class="slider-control-row">
-              <input type="range" id="engine-slider" min="0" max="100" step="5" class="apex-slider" />
-              <span id="engine-percentage" class="slider-value">80%</span>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-meta">
-              <span class="setting-title">EFFECTS VOLUME</span>
-              <span class="setting-subtext">Tire squeal, transmission clacks, collision thuds & race cues</span>
-            </div>
-            <div class="slider-control-row">
-              <input type="range" id="effects-slider" min="0" max="100" step="5" class="apex-slider" />
-              <span id="effects-percentage" class="slider-value">80%</span>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-meta">
-              <span class="setting-title">RACE & MENU MUSIC</span>
-              <span class="setting-subtext">Procedural synthwave soundtrack output</span>
-            </div>
-            <div class="slider-control-row">
-              <input type="range" id="music-slider" min="0" max="100" step="5" class="apex-slider" />
-              <span id="music-percentage" class="slider-value">70%</span>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-meta">
-              <span class="setting-title">AUDIO MUTE</span>
-              <span class="setting-subtext">Instantly silence all game and vehicle sound</span>
-            </div>
-            <button id="btn-audio-mute" class="quality-btn" style="width: 100%;">MUTE AUDIO</button>
-          </div>
-        </div>
-
-        <div class="panel-bottom-nav">
-          <button id="btn-settings-back" class="apex-btn primary-btn full-width" autofocus>
-            <span class="btn-text">APPLY & RETURN</span>
+          <button id="btn-close-settings" class="settings-close-btn" aria-label="Close Settings" title="Close Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
           </button>
+          <button id="btn-settings-back" class="visually-hidden" style="display:none;" aria-hidden="true" tabindex="-1"></button>
+        </header>
+
+        <!-- Scrollable Content Body with max-height & sleek thin custom scrollbar -->
+        <div class="settings-scroll-body">
+          
+          <!-- CONTROLS CARD -->
+          <section class="settings-section-card">
+            <div class="settings-section-header">
+              <div class="settings-section-title-wrap">
+                <h3 class="settings-section-title">CONTROLS</h3>
+                <span class="settings-section-sub">Steering & input configuration</span>
+              </div>
+            </div>
+            <div class="settings-section-body">
+              <div class="setting-item">
+                <div class="setting-meta">
+                  <span class="setting-title">INPUT SCHEME</span>
+                </div>
+                <div class="quality-toggle-group control-scheme-grid">
+                  <button id="btn-scheme-buttons" class="quality-btn" data-scheme="buttons">BUTTONS</button>
+                  <button id="btn-scheme-touch-sides" class="quality-btn" data-scheme="touch_sides">TOUCH SIDES (AUTO)</button>
+                  <button id="btn-scheme-tilt-manual" class="quality-btn" data-scheme="tilt_manual">TILT (MANUAL)</button>
+                  <button id="btn-scheme-tilt-auto" class="quality-btn" data-scheme="tilt_auto">TILT (AUTO)</button>
+                </div>
+              </div>
+
+              <div class="setting-item touch-scale-item">
+                <div class="setting-meta-inline">
+                  <span class="setting-item-label">TOUCH BUTTON SIZE</span>
+                  <span class="setting-item-subtext">Scale on-screen touch controls</span>
+                </div>
+                <div class="slider-control-row">
+                  <input type="range" id="touch-scale-slider" min="70" max="140" step="5" class="apex-slider" />
+                  <span id="touch-scale-percentage" class="slider-value">100%</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- AUDIO MIXER CARD -->
+          <section class="settings-section-card">
+            <div class="settings-section-header">
+              <div class="settings-section-title-wrap">
+                <h3 class="settings-section-title">AUDIO MIXER</h3>
+                <span class="settings-section-sub">Multi-channel master & dynamic acoustics</span>
+              </div>
+              <button id="btn-audio-mute" class="settings-mute-btn" aria-label="Toggle Audio Mute">
+                <span class="mute-indicator-dot"></span>
+                <span id="mute-btn-label">MUTE ALL AUDIO</span>
+              </button>
+            </div>
+            <div class="settings-section-body">
+              <div class="audio-mixer-grid">
+                <div class="mixer-tile">
+                  <div class="mixer-tile-head">
+                    <span class="mixer-tile-name">MASTER</span>
+                    <span id="volume-percentage" class="slider-value">80%</span>
+                  </div>
+                  <input type="range" id="volume-slider" min="0" max="100" step="5" class="apex-slider" />
+                </div>
+
+                <div class="mixer-tile">
+                  <div class="mixer-tile-head">
+                    <span class="mixer-tile-name">ENGINE</span>
+                    <span id="engine-percentage" class="slider-value">80%</span>
+                  </div>
+                  <input type="range" id="engine-slider" min="0" max="100" step="5" class="apex-slider" />
+                </div>
+
+                <div class="mixer-tile">
+                  <div class="mixer-tile-head">
+                    <span class="mixer-tile-name">EFFECTS</span>
+                    <span id="effects-percentage" class="slider-value">80%</span>
+                  </div>
+                  <input type="range" id="effects-slider" min="0" max="100" step="5" class="apex-slider" />
+                </div>
+
+                <div class="mixer-tile">
+                  <div class="mixer-tile-head">
+                    <span class="mixer-tile-name">MUSIC</span>
+                    <span id="music-percentage" class="slider-value">70%</span>
+                  </div>
+                  <input type="range" id="music-slider" min="0" max="100" step="5" class="apex-slider" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- GRAPHICS QUALITY CARD -->
+          <section class="settings-section-card">
+            <div class="settings-section-header">
+              <div class="settings-section-title-wrap">
+                <h3 class="settings-section-title">GRAPHICS QUALITY</h3>
+                <span class="settings-section-sub">Buffer scaling, shadow filtering & shaders</span>
+              </div>
+            </div>
+            <div class="settings-section-body">
+              <div class="quality-toggle-group">
+                <button id="btn-quality-low" class="quality-btn" data-quality="low">LOW</button>
+                <button id="btn-quality-medium" class="quality-btn" data-quality="medium">MEDIUM</button>
+                <button id="btn-quality-high" class="quality-btn" data-quality="high">HIGH</button>
+              </div>
+            </div>
+          </section>
+
         </div>
       </div>
     `;
@@ -272,21 +291,33 @@ export class SettingsMenu {
       });
     }
 
-    document.getElementById('btn-settings-back')?.addEventListener('click', () => {
-      this.triggerBack();
-    });
+    const handleBack = () => this.triggerBack();
+    document.getElementById('btn-close-settings')?.addEventListener('click', handleBack);
+    document.getElementById('btn-settings-back')?.addEventListener('click', handleBack);
 
     this.syncFromSettings();
   }
 
   private updateMuteButtonDisplay(isMuted: boolean): void {
     if (!this.muteButton) return;
+    const label = document.getElementById('mute-btn-label');
+    const mixerGrid = this.container?.querySelector('.audio-mixer-grid');
     if (isMuted) {
       this.muteButton.classList.add('active');
-      this.muteButton.textContent = 'UNMUTE AUDIO (MUTED)';
+      if (label) {
+        label.textContent = 'UNMUTE AUDIO (MUTED)';
+      } else {
+        this.muteButton.textContent = 'UNMUTE AUDIO (MUTED)';
+      }
+      mixerGrid?.classList.add('is-muted');
     } else {
       this.muteButton.classList.remove('active');
-      this.muteButton.textContent = 'MUTE ALL AUDIO';
+      if (label) {
+        label.textContent = 'MUTE ALL AUDIO';
+      } else {
+        this.muteButton.textContent = 'MUTE ALL AUDIO';
+      }
+      mixerGrid?.classList.remove('is-muted');
     }
   }
 
@@ -380,8 +411,8 @@ export class SettingsMenu {
     this.container.classList.remove('hidden');
     window.addEventListener('keydown', this.boundKeyDown);
 
-    const btnBack = document.getElementById('btn-settings-back');
-    btnBack?.focus();
+    const btnClose = document.getElementById('btn-close-settings') || document.getElementById('btn-settings-back');
+    btnClose?.focus();
   }
 
   public hide(): void {

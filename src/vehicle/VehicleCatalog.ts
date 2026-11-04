@@ -233,10 +233,10 @@ export const VEHICLE_CATALOG: VehicleCatalogItem[] = [
       drag: 0.29,
     },
     unlock: {
-      method: 'drift_milestone',
+      method: 'credits',
       creditCost: 28000,
       requiredLevel: 5,
-      trophyRequirement: 'Score 12,000+ Points in Drift Challenge',
+      trophyRequirement: 'Reach Driver Level 5',
     },
     description: 'Sharp, responsive front-engine rear-drive sports coupe. Wide steering angle authority and predictable power oversteer for high-speed drifting.',
     badges: ['TUNER ICON', 'DRIFT SPECIAL', 'RWD'],

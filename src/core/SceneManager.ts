@@ -396,7 +396,7 @@ export class SceneManager {
     this.setCameraMode('orbit');
     this.orbitCamera.alpha = 2.45; // Front 3/4 showcase angle highlighting nose, headlights, and wheels
     this.orbitCamera.beta = 1.25;
-    this.orbitCamera.radius = 5.8;
+    this.orbitCamera.radius = 5.5;
     this.orbitCamera.lowerRadiusLimit = 3.2;
     this.orbitCamera.upperRadiusLimit = 8.5;
     this.orbitCamera.lowerBetaLimit = 0.35;
@@ -414,8 +414,8 @@ export class SceneManager {
   public applyGarageCameraTarget(): void {
     if (!this.isGarageMode || this.currentCameraMode !== 'orbit') return;
     const isSmall = typeof window !== 'undefined' && (window.innerWidth < 768 || window.innerHeight < 550);
-    const shiftX = isSmall ? -0.85 : -1.55;
-    const shiftY = isSmall ? 0.08 : 0.15;
+    const shiftX = isSmall ? -0.95 : -2.05;
+    const shiftY = isSmall ? 0.08 : 0.12;
     this.orbitCamera.targetScreenOffset = new Vector2(shiftX, shiftY);
     this.orbitCamera.setTarget(this.garageBaseTarget.add(new Vector3(0, 0.70, 0)), false, true);
   }
