@@ -10,6 +10,7 @@ export interface HUDState {
   currentGate: number;
   totalGates: number;
   lap: number;
+  totalLaps?: number;
   raceTimeSeconds: number;
   mode?: RaceMode;
   countdownText?: string;
@@ -263,7 +264,8 @@ export class RacingHUD {
           : '0/3';
         this.checkpointHUDElement.textContent = `SPEED TRAP // RADAR ${traps}`;
       } else {
-        this.checkpointHUDElement.textContent = `LAP ${lap} • SECTOR ${currentGate}/${totalGates}`;
+        const lapStr = state.totalLaps && state.totalLaps > 1 ? `LAP ${lap}/${state.totalLaps}` : `LAP ${lap}`;
+        this.checkpointHUDElement.textContent = `${lapStr} • SECTOR ${currentGate}/${totalGates}`;
       }
     }
 

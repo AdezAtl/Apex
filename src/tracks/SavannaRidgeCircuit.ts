@@ -1085,7 +1085,7 @@ export const SavannaRidgeCircuit: CircuitDefinition = {
     for (let i = 0; i < samplesCount; i += 30) {
       const pt = savannaRidgeRoadSamples[i];
       const curWidth = pt.width || 13.0;
-      const rightPos = pt.position.add(pt.rightNormal.scale(curWidth / 2 + 1.8));
+      const rightPos = pt.position.add(pt.rightNormal.scale(curWidth / 2 + 3.2));
 
       const post = MeshBuilder.CreateCylinder('SR_BoardPost_' + i, { height: 1.6, diameter: 0.10 }, scene);
       post.position.set(rightPos.x, yOffset + 0.8, rightPos.z);

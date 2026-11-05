@@ -174,11 +174,16 @@ export class AIOpponent {
 
   // Race progression state
   public lapCount: number = 1;
+  public targetLaps: number = 1;
+  public isSprint: boolean = false;
+  public sprintFinishDistance: number = Infinity;
+  public closestWpIndex: number = 0;
   public prevTrackDist: number = 0;
   public trackDistance: number = 0;
   public totalDistance: number = 0;
   public isFinished: boolean = false;
   public finishTime: number = 0;
+  public onFinished?: (id: string, finishTime: number) => void;
 
   // Personality & Behavioral Dynamics
   public personality: PersonalityTraits;
@@ -268,6 +273,7 @@ export class AIOpponent {
     this.forwardAcceleration = 0;
     this.lateralAcceleration = 0;
     this.lapCount = 1;
+    this.closestWpIndex = 0;
     this.prevTrackDist = 0;
     this.trackDistance = 0;
     this.totalDistance = 0;
@@ -309,28 +315,48 @@ export class AIOpponent {
     }
 
     // 1. Update track progress and lap counter
-    this.trackDistance = waypointManager.getTrackDistance(this.position);
+    const closestWp = waypointManager.findClosestWaypoint(this.position, this.closestWpIndex);
+    this.closestWpIndex = closestWp.index;
+    this.trackDistance = waypointManager.getTrackDistance(this.position, this.closestWpIndex);
 
     // If starting on grid behind start line, clamp initial trackDistance to 0 so it doesn't wrap to trackLength
     if (this.raceTimer < 4.0 && this.trackDistance > waypointManager.trackLength * 0.80) {
       this.trackDistance = 0;
     }
 
-    // Detect lap completion: sudden wrap-around from end of lap to start.
-    // Strictly gated by raceTimer > 12.0 to prevent false lap trigger on cars starting behind the start line.
-    if (
-      this.raceTimer > 12.0 &&
-      this.prevTrackDist > waypointManager.trackLength * 0.80 &&
-      this.trackDistance < waypointManager.trackLength * 0.20
-    ) {
-      this.lapCount++;
+    // Lap / Sprint finish detection
+    if (this.isSprint) {
+      this.totalDistance = this.trackDistance;
+      if (this.totalDistance >= this.sprintFinishDistance && !this.isFinished) {
+        this.isFinished = true;
+        this.finishTime = this.raceTimer;
+        if (this.onFinished) {
+          this.onFinished(this.id, this.finishTime);
+        }
+      }
+    } else {
+      // Loop circuit: detect crossing the start/finish line
+      if (
+        this.raceTimer > 2.5 &&
+        this.prevTrackDist > waypointManager.trackLength * 0.70 &&
+        this.trackDistance < waypointManager.trackLength * 0.30
+      ) {
+        this.lapCount++;
+        if (this.lapCount > this.targetLaps && !this.isFinished) {
+          this.isFinished = true;
+          this.finishTime = this.raceTimer;
+          if (this.onFinished) {
+            this.onFinished(this.id, this.finishTime);
+          }
+        }
+      }
+      this.prevTrackDist = this.trackDistance;
+      this.totalDistance = (this.lapCount - 1) * waypointManager.trackLength + this.trackDistance;
     }
-    this.prevTrackDist = this.trackDistance;
-    this.totalDistance = (this.lapCount - 1) * waypointManager.trackLength + this.trackDistance;
 
     // If finished, smoothly brake to a stop
     if (this.isFinished) {
-      this.forwardSpeed = Math.max(0, this.forwardSpeed - 6.0 * clampedDt);
+      this.forwardSpeed = Math.max(0, this.forwardSpeed - 7.0 * clampedDt);
       this.integratePosition(clampedDt);
       this.updateVisuals(clampedDt);
       return;
@@ -372,7 +398,6 @@ export class AIOpponent {
     }
 
     // Check off-track distance from track centerline
-    const closestWp = waypointManager.findClosestWaypoint(this.position);
     const distToCenter = Math.hypot(
       this.position.x - closestWp.position.x,
       this.position.z - closestWp.position.z

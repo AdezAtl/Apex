@@ -1702,7 +1702,7 @@ export const AkoboHighwayCircuit: CircuitDefinition = {
     for (let i = 0; i < totalSamples; i += 40) {
       const pt = akoboRoadSamples[i];
       const curWidth = pt.width || 14.5;
-      const rightPos = pt.position.add(pt.rightNormal.scale(curWidth / 2 + 1.8));
+      const rightPos = pt.position.add(pt.rightNormal.scale(curWidth / 2 + 3.2));
 
       const post = MeshBuilder.CreateCylinder('akobo_BoardPost_' + i, { height: 1.8, diameter: 0.12 }, scene);
       post.position.set(rightPos.x, yOffset + 0.9, rightPos.z);

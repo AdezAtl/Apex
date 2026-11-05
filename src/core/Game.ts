@@ -105,6 +105,7 @@ export class Game {
   private currentLiveRankFormatted: string = '1ST';
   private currentLiveTotalRacers: number = 4;
   private cachedResultValue: number = 0;
+  private playerClosestWpIndex: number = 0;
 
   // Debug HUD elements
   private fpsElement: HTMLElement | null = null;
@@ -418,18 +419,33 @@ export class Game {
       }
     };
 
-    this.checkpointManager.onLapCompleted = () => {
+    this.checkpointManager.onLapCompleted = (completedLap: number) => {
       if (this.state === GameState.Racing) {
-        if (this.currentEvent.mode === 'time_trial') {
-          this.finishRace();
-        } else if (this.currentEvent.mode === 'speed_trap') {
-          this.finishRace(this.speedTrapManager.getAggregateSpeed());
+        const targetLaps = this.getTargetLapsForEvent(this.currentEvent);
+        if (completedLap >= targetLaps) {
+          if (this.currentEvent.mode === 'time_trial') {
+            const finalRank = this.aiManager.notifyRacerFinished('player', this.raceTimeSeconds, true);
+            this.cachedFinishRankNumber = finalRank;
+            const rankSuffixes = ['1ST', '2ND', '3RD', '4TH'];
+            const suffix = rankSuffixes[finalRank - 1] || `${finalRank}TH`;
+            const totalRacers = this.aiManager.opponents.length + 1;
+            this.cachedFinishPositionDisplay = `${suffix} PLACE / ${totalRacers} DRIVERS`;
+            this.finishRace();
+          } else if (this.currentEvent.mode === 'speed_trap') {
+            this.finishRace(this.speedTrapManager.getAggregateSpeed());
+          }
         }
       }
     };
 
     this.checkpointManager.onSprintCompleted = () => {
       if (this.state === GameState.Racing && this.currentEvent.mode === 'sprint') {
+        const finalRank = this.aiManager.notifyRacerFinished('player', this.raceTimeSeconds, true);
+        this.cachedFinishRankNumber = finalRank;
+        const rankSuffixes = ['1ST', '2ND', '3RD', '4TH'];
+        const suffix = rankSuffixes[finalRank - 1] || `${finalRank}TH`;
+        const totalRacers = this.aiManager.opponents.length + 1;
+        this.cachedFinishPositionDisplay = `${suffix} PLACE / ${totalRacers} DRIVERS`;
         this.finishRace();
       }
     };
@@ -845,13 +861,22 @@ export class Game {
             }
 
             // Compute player progress distance & relative grid ranking
+            const playerWp = this.aiManager.waypointManager.findClosestWaypoint(
+              this.vehicleController.position,
+              this.playerClosestWpIndex
+            );
+            this.playerClosestWpIndex = playerWp.index;
             let playerProgress = this.aiManager.waypointManager.getProgressDistance(
               this.vehicleController.position,
-              this.checkpointManager.lapCount + 1
+              this.checkpointManager.lapCount + 1,
+              this.playerClosestWpIndex
             );
             // On Lap 1 before crossing CP_1, if player is slightly behind the start line, clamp progress to 0
             if (this.checkpointManager.lapCount === 0 && this.checkpointManager.currentCheckpointIndex === 0) {
-              const trackDist = this.aiManager.waypointManager.getTrackDistance(this.vehicleController.position);
+              const trackDist = this.aiManager.waypointManager.getTrackDistance(
+                this.vehicleController.position,
+                this.playerClosestWpIndex
+              );
               if (trackDist > this.aiManager.waypointManager.trackLength * 0.80) {
                 playerProgress = 0;
               }
@@ -910,6 +935,7 @@ export class Game {
               currentGate: this.checkpointManager.getCurrentGateNumber(),
               totalGates: this.checkpointManager.getTotalGates(),
               lap: this.checkpointManager.lapCount + 1,
+              totalLaps: this.getTargetLapsForEvent(this.currentEvent),
               raceTimeSeconds: this.raceTimeSeconds,
               mode: this.currentEvent.mode,
               positionRank: posRank,
@@ -1360,9 +1386,19 @@ export class Game {
     this.loadingScreen.hide();
   }
 
+  public getTargetLapsForEvent(event: RaceEventConfig): number {
+    if (event.mode === 'sprint') return 1;
+    if (event.lapsBadge) {
+      const m = event.lapsBadge.match(/(\d+)\s*LAP/i);
+      if (m) return parseInt(m[1], 10);
+    }
+    return 1;
+  }
+
   public startCountdown(event?: RaceEventConfig, difficulty?: AIDifficulty): void {
     requestFullscreenIfMobile();
     this.clearCountdownTimeouts();
+    this.playerClosestWpIndex = 0;
 
     if (event) {
       this.currentEvent = event;
@@ -1372,7 +1408,8 @@ export class Game {
       this.aiManager.isEnabled = false;
       this.aiManager.hideOpponents();
     } else {
-      this.aiManager.setupGrid(this.currentEvent, difficulty);
+      const targetLaps = this.getTargetLapsForEvent(this.currentEvent);
+      this.aiManager.setupGrid(this.currentEvent, difficulty, targetLaps);
     }
 
     // Ensure active vehicle handling profile is synchronized with selected vehicle
@@ -1505,14 +1542,23 @@ export class Game {
     this.finishCinematicElapsed = 0;
 
     // Snapshot exact finish position at the moment the finish line is crossed
-    this.cachedFinishRankNumber = this.currentLiveRank;
-    if (!this.cachedFinishPositionDisplay) {
-      if (this.currentEvent.mode === 'drift') {
-        this.cachedFinishPositionDisplay = `DRIFT SCORE • ${this.driftScoringManager.totalBankedScore.toLocaleString()} PTS`;
-      } else if (this.currentEvent.mode === 'speed_trap') {
-        this.cachedFinishPositionDisplay = `RADAR TRAPS • ${Math.round(this.speedTrapManager.getAggregateSpeed())} KM/H`;
-      } else if (this.aiManager.isEnabled || (this.multiplayerManager?.isActive ?? false)) {
-        this.cachedFinishPositionDisplay = `${this.currentLiveRankFormatted} PLACE`;
+    const lockedRank = this.aiManager.getFinishRank('player');
+    if (lockedRank !== null) {
+      this.cachedFinishRankNumber = lockedRank;
+      const rankSuffixes = ['1ST', '2ND', '3RD', '4TH'];
+      const suffix = rankSuffixes[lockedRank - 1] || `${lockedRank}TH`;
+      const totalRacers = this.aiManager.opponents.length + 1;
+      this.cachedFinishPositionDisplay = `${suffix} PLACE / ${totalRacers} DRIVERS`;
+    } else {
+      this.cachedFinishRankNumber = this.currentLiveRank;
+      if (!this.cachedFinishPositionDisplay) {
+        if (this.currentEvent.mode === 'drift') {
+          this.cachedFinishPositionDisplay = `DRIFT SCORE • ${this.driftScoringManager.totalBankedScore.toLocaleString()} PTS`;
+        } else if (this.currentEvent.mode === 'speed_trap') {
+          this.cachedFinishPositionDisplay = `RADAR TRAPS • ${Math.round(this.speedTrapManager.getAggregateSpeed())} KM/H`;
+        } else if (this.aiManager.isEnabled || (this.multiplayerManager?.isActive ?? false)) {
+          this.cachedFinishPositionDisplay = `${this.currentLiveRankFormatted} PLACE`;
+        }
       }
     }
 

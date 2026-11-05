@@ -683,7 +683,7 @@ export const EleyeleRingCircuit: CircuitDefinition = {
     for (let i = 0; i < totalSamples; i += 25) {
       const pt = eleyeleRoadSamples[i];
       const curWidth = pt.width || 13.5;
-      const rightPos = pt.position.add(pt.rightNormal.scale(curWidth / 2 + 1.8));
+      const rightPos = pt.position.add(pt.rightNormal.scale(curWidth / 2 + 3.2));
 
       const post = MeshBuilder.CreateCylinder('eleyele_BoardPost_' + i, { height: 1.8, diameter: 0.12 }, scene);
       post.position.set(rightPos.x, yOffset + 0.9, rightPos.z);

@@ -15,6 +15,7 @@ import { CheckpointData } from '../checkpoints/CheckpointManager';
 import { CircuitDefinition, TrackSectionConfig } from '../tracks/TrackConfig';
 import { ForestValleyCircuit } from '../tracks/ForestValleyCircuit';
 import { RoadMeshBuilder } from './RoadMeshBuilder';
+import { RoadsideInfrastructureBuilder } from './RoadsideInfrastructureBuilder';
 
 export type { TrackSectionConfig };
 
@@ -99,16 +100,14 @@ export class TrackLoader {
         this.pieces.push(el);
       }
 
-      const kerbs = roadBuilder.buildKerbs(
+      // Invisible boundary wall is used instead of physical side curbs
+      // Build roadside billboards and commercial building ads behind the invisible boundaries
+      RoadsideInfrastructureBuilder.build(
+        this.scene,
         this.trackRoot,
-        circuit.roadSamples,
-        13.0,
-        0.85,
+        circuit,
         this.roadSurfaceY
       );
-      for (const k of kerbs) {
-        this.pieces.push(k);
-      }
 
       const verges = roadBuilder.buildVerges(
         this.trackRoot,

@@ -27,6 +27,14 @@ export interface PlayerRankInfo {
   behindGapMeters: number;
 }
 
+export interface FinishedRacerRecord {
+  id: string;
+  name: string;
+  isPlayer: boolean;
+  finishTime: number;
+  rank: number;
+}
+
 export class AIManager {
   private scene: Scene;
   public waypointManager: WaypointManager;
@@ -35,6 +43,7 @@ export class AIManager {
   public isRacing: boolean = false;
   public difficulty: AIDifficulty = 'normal';
   public currentCircuit: CircuitDefinition | null = null;
+  public finishedRacers: FinishedRacerRecord[] = [];
 
   // Configured AI grid setup for the 3 opponents (staggered ahead of player in P4)
   private static readonly AI_CONFIGS: AIOpponentConfig[] = [
@@ -126,12 +135,17 @@ export class AIManager {
    * Sets up starting grid before countdown.
    * Gated: Drift mode is solo, AI opponents are disabled and hidden.
    */
-  public setupGrid(event: RaceEventConfig, difficulty?: AIDifficulty): void {
+  public setupGrid(
+    event: RaceEventConfig,
+    difficulty?: AIDifficulty,
+    targetLaps: number = 1
+  ): void {
     if (difficulty) {
       this.setDifficulty(difficulty);
     }
 
     this.isRacing = false;
+    this.finishedRacers = [];
 
     // DRIFT & POLICE PURSUIT MODES: Disable standard AI grid
     if (event.mode === 'drift' || event.mode === 'pursuit') {
@@ -140,14 +154,71 @@ export class AIManager {
       return;
     }
 
+    const isSprint = event.mode === 'sprint' || event.mapType === 'sprint';
+    let sprintFinishDistance = this.waypointManager.trackLength;
+    if (isSprint && this.currentCircuit) {
+      const finishCp = this.currentCircuit.checkpoints.find(c => c.id === event.finishCheckpointId);
+      if (finishCp) {
+        sprintFinishDistance = this.waypointManager.getTrackDistance(finishCp.position);
+      } else {
+        sprintFinishDistance = this.waypointManager.trackLength * 0.5;
+      }
+    }
+
     // Circuit Race & Sprint: Enable and position on grid
     this.isEnabled = true;
     for (const opp of this.opponents) {
       opp.resetToGrid();
+      opp.targetLaps = targetLaps;
+      opp.isSprint = isSprint;
+      opp.sprintFinishDistance = sprintFinishDistance;
+      opp.onFinished = (id, time) => {
+        this.notifyRacerFinished(id, time, false);
+      };
       if (opp.vehicle && opp.vehicle.rootNode) {
         opp.vehicle.rootNode.setEnabled(true);
       }
     }
+  }
+
+  /**
+   * Records a racer as finished and permanently locks their finish rank.
+   */
+  public notifyRacerFinished(
+    id: string,
+    finishTime: number,
+    isPlayer: boolean = false
+  ): number {
+    const existing = this.finishedRacers.find(r => r.id === id);
+    if (existing) return existing.rank;
+
+    const rank = this.finishedRacers.length + 1;
+    let name = isPlayer ? 'YOU (PLAYER)' : id;
+    if (!isPlayer) {
+      const opp = this.opponents.find(o => o.id === id);
+      if (opp) {
+        name = opp.name;
+        opp.isFinished = true;
+        opp.finishTime = finishTime;
+      }
+    }
+
+    this.finishedRacers.push({
+      id,
+      name,
+      isPlayer,
+      finishTime,
+      rank,
+    });
+    return rank;
+  }
+
+  /**
+   * Returns the locked finish rank for a racer if already finished.
+   */
+  public getFinishRank(id: string): number | null {
+    const found = this.finishedRacers.find(r => r.id === id);
+    return found ? found.rank : null;
   }
 
   /**
@@ -216,12 +287,39 @@ export class AIManager {
       };
     }
 
-    // Compare player progress against all AI progress
+    const totalRacers = this.opponents.length + 1;
+    const rankSuffixes = ['1ST', '2ND', '3RD', '4TH'];
+
+    // 1. If player has already crossed the finish line, return locked official rank
+    const playerFinished = this.finishedRacers.find(r => r.isPlayer);
+    if (playerFinished) {
+      const rank = playerFinished.rank;
+      return {
+        rank,
+        totalRacers,
+        rankFormatted: rankSuffixes[rank - 1] || `${rank}TH`,
+        rankDisplay: `${rank}st / ${totalRacers}`,
+        aheadGapMeters: 0,
+        behindGapMeters: 0,
+      };
+    }
+
+    // 2. Active in-race evaluation:
+    // Base rank starts at 1 + (count of finished AI racers ahead)
     let rank = 1;
+    for (const f of this.finishedRacers) {
+      if (!f.isPlayer) {
+        rank++;
+      }
+    }
+
     let minAheadDist = Infinity;
     let minBehindDist = Infinity;
 
+    // Compare player progress against all active (non-finished) AI opponents
     for (const opp of this.opponents) {
+      if (opp.isFinished) continue;
+
       const diff = opp.totalDistance - playerProgressDistance;
       if (diff > 0) {
         // AI is ahead of player
@@ -234,14 +332,13 @@ export class AIManager {
       }
     }
 
-    const rankSuffixes = ['1ST', '2ND', '3RD', '4TH'];
-    const rankDisplays = ['1st / 4', '2nd / 4', '3rd / 4', '4th / 4'];
+    const rankDisplays = [`1st / ${totalRacers}`, `2nd / ${totalRacers}`, `3rd / ${totalRacers}`, `4th / ${totalRacers}`];
 
     return {
       rank,
-      totalRacers: 4,
+      totalRacers,
       rankFormatted: rankSuffixes[rank - 1] || `${rank}TH`,
-      rankDisplay: rankDisplays[rank - 1] || `${rank}th / 4`,
+      rankDisplay: rankDisplays[rank - 1] || `${rank}th / ${totalRacers}`,
       aheadGapMeters: minAheadDist === Infinity ? 0 : Math.round(minAheadDist),
       behindGapMeters: minBehindDist === Infinity ? 0 : Math.round(minBehindDist),
     };
@@ -255,39 +352,48 @@ export class AIManager {
     playerSpeedKmh: number,
     playerPaintHex: string
   ): RacerStanding[] {
+    const playerFinished = this.finishedRacers.find(r => r.isPlayer);
     const list: RacerStanding[] = [
       {
-        rank: 1,
+        rank: playerFinished ? playerFinished.rank : 1,
         id: 'player',
         name: 'YOU (PLAYER)',
         isPlayer: true,
         totalDistance: playerProgressDistance,
         speedKmh: Math.round(playerSpeedKmh),
         paintHex: playerPaintHex,
-        isFinished: false,
-        finishTime: 0,
+        isFinished: Boolean(playerFinished),
+        finishTime: playerFinished ? playerFinished.finishTime : 0,
       },
     ];
 
     if (this.isEnabled) {
       for (const opp of this.opponents) {
         const paint = getPaintOptionById(opp.paintId);
+        const oppFinished = this.finishedRacers.find(r => r.id === opp.id);
         list.push({
-          rank: 1,
+          rank: oppFinished ? oppFinished.rank : 1,
           id: opp.id,
           name: opp.name,
           isPlayer: false,
           totalDistance: opp.totalDistance,
           speedKmh: Math.round(opp.forwardSpeed * 3.6),
           paintHex: paint.hex,
-          isFinished: opp.isFinished,
-          finishTime: opp.finishTime,
+          isFinished: Boolean(oppFinished || opp.isFinished),
+          finishTime: oppFinished ? oppFinished.finishTime : opp.finishTime,
         });
       }
     }
 
-    // Sort descending by totalDistance
-    list.sort((a, b) => b.totalDistance - a.totalDistance);
+    // Sort: Finished racers in order of finish rank; active racers by distance descending
+    list.sort((a, b) => {
+      if (a.isFinished && b.isFinished) {
+        return a.rank - b.rank;
+      }
+      if (a.isFinished) return -1;
+      if (b.isFinished) return 1;
+      return b.totalDistance - a.totalDistance;
+    });
 
     // Assign rank
     for (let i = 0; i < list.length; i++) {

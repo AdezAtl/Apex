@@ -130,11 +130,37 @@ export class WaypointManager {
 
   /**
    * Finds the closest waypoint to an arbitrary world position.
+   * If a hintIndex is provided, searches a local window to prevent false snapping
+   * to parallel straights or adjacent hairpins.
    */
-  public findClosestWaypoint(pos: Vector3): Waypoint {
+  public findClosestWaypoint(pos: Vector3, hintIndex?: number): Waypoint {
     let bestDistSq = Infinity;
     let bestWp = this.waypoints[0];
 
+    if (hintIndex !== undefined && hintIndex >= 0 && hintIndex < this.totalWaypoints) {
+      // Local window search around last known index: -15 waypoints to +30 waypoints ahead
+      const windowStart = hintIndex - 15;
+      const windowEnd = hintIndex + 30;
+      for (let w = windowStart; w <= windowEnd; w++) {
+        const idx = ((w % this.totalWaypoints) + this.totalWaypoints) % this.totalWaypoints;
+        const wp = this.waypoints[idx];
+        const dx = wp.position.x - pos.x;
+        const dz = wp.position.z - pos.z;
+        const distSq = dx * dx + dz * dz;
+
+        if (distSq < bestDistSq) {
+          bestDistSq = distSq;
+          bestWp = wp;
+        }
+      }
+      // If local window found a valid candidate within reasonable track distance (< 50m), use it
+      if (bestDistSq < 50 * 50) {
+        return bestWp;
+      }
+    }
+
+    // Global fallback for initial placement or after respawn
+    bestDistSq = Infinity;
     for (let i = 0; i < this.totalWaypoints; i++) {
       const wp = this.waypoints[i];
       const dx = wp.position.x - pos.x;
@@ -152,33 +178,51 @@ export class WaypointManager {
 
   /**
    * Calculates continuous distance along track (0..trackLength) for a given vehicle position.
+   * Smoothly projects between previous and next waypoint segments with zero flat spots.
    */
-  public getTrackDistance(pos: Vector3): number {
-    const closest = this.findClosestWaypoint(pos);
-    const next = this.waypoints[(closest.index + 1) % this.totalWaypoints];
+  public getTrackDistance(pos: Vector3, hintIndex?: number): number {
+    const closest = this.findClosestWaypoint(pos, hintIndex);
+    const n = this.totalWaypoints;
+    const prev = this.waypoints[(closest.index - 1 + n) % n];
+    const next = this.waypoints[(closest.index + 1) % n];
 
-    // Project onto segment (closest -> next)
-    const segDir = next.position.subtract(closest.position);
-    segDir.y = 0;
-    const segLen = segDir.length();
-    if (segLen < 0.001) return closest.distanceAlongTrack;
+    // Determine segment vectors
+    const segPrev = closest.position.subtract(prev.position);
+    segPrev.y = 0;
+    const lenPrev = segPrev.length();
+
+    const segNext = next.position.subtract(closest.position);
+    segNext.y = 0;
+    const lenNext = segNext.length();
 
     const toPos = pos.subtract(closest.position);
     toPos.y = 0;
-    const proj = Math.max(0, Math.min(segLen, Vector3.Dot(toPos, segDir) / segLen));
 
-    let dist = closest.distanceAlongTrack + proj;
-    if (dist >= this.trackLength) {
-      dist -= this.trackLength;
+    // Check projection along forward segment (closest -> next)
+    const dotNext = lenNext > 0.001 ? Vector3.Dot(toPos, segNext) / lenNext : 0;
+
+    let dist = closest.distanceAlongTrack;
+    if (dotNext >= 0) {
+      // Vehicle is forward of closest waypoint
+      const proj = Math.min(lenNext, dotNext);
+      dist += proj;
+    } else {
+      // Vehicle is behind closest waypoint (between prev and closest)
+      const dotPrev = lenPrev > 0.001 ? Vector3.Dot(toPos, segPrev) / lenPrev : 0;
+      const proj = Math.max(-lenPrev, dotPrev);
+      dist += proj;
     }
+
+    while (dist < 0) dist += this.trackLength;
+    while (dist >= this.trackLength) dist -= this.trackLength;
     return dist;
   }
 
   /**
    * Calculates cumulative race progress distance (including completed laps).
    */
-  public getProgressDistance(pos: Vector3, lap: number): number {
-    const trackDist = this.getTrackDistance(pos);
+  public getProgressDistance(pos: Vector3, lap: number, hintIndex?: number): number {
+    const trackDist = this.getTrackDistance(pos, hintIndex);
     return Math.max(0, (lap - 1) * this.trackLength + trackDist);
   }
 
